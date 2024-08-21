@@ -21,8 +21,15 @@ class LayerModule(tf.Module):
       layer = self.InitializeConnections()
       self.connections = tf.Variable(layer, name='connections', trainable=False)
       self.potentials = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='potentials', trainable=False)
-      initialspikes = np.zeros([self.thickness, 1, self.layer_size], dtype=np.int32)
-      initialspikes[0, 0, 0] = 1
+      initialspikes = np.zeros((self.thickness, 1, self.layer_size), dtype=np.int32)
+      initialspikes[0, 0, 1] = 1
+      initialspikes[1, 0, 1] = 1
+      initialspikes[2, 0, 1] = 1
+      initialspikes[3, 0, 1] = 1
+      initialspikes[4, 0, 1] = 1
+      initialspikes[5, 0, 1] = 1
+      initialspikes[6, 0, 1] = 1
+      initialspikes[7, 0, 1] = 1
       self.spikes = tf.Variable(tf.cast(initialspikes, tf.dtypes.int32), trainable=False)
 
       self.is_built = True
@@ -33,12 +40,14 @@ class LayerModule(tf.Module):
     return self.spikes
 
   def InitializeConnections(self):
-      #layer = tf.cast(tf.random.normal([self.thickness, self.layer_size, self.layer_size], mean=0.0, stddev=1.0), tf.dtypes.int32)
+      layer = tf.cast(tf.random.normal([self.thickness, self.layer_size, self.layer_size], mean=0.0, stddev=10.0), tf.dtypes.int32)
+      """
       layer = np.zeros((self.thickness, self.layer_size, self.layer_size))
       for i in range(self.layer_size - 2):
         layer[0][i][i+1] = 6
         layer[0][i][i+2] = 5
       layer = tf.cast(layer, tf.dtypes.int32)
+      """
       return layer
 
 class PopulationModule(tf.Module):
@@ -113,7 +122,7 @@ def TracePopulationModel():
 
 #tf.debugging.set_log_device_placement(True)
 
-iterationCount = 10
+iterationCount = 640
 population_model = PopulationModule(layer_size=320, iterations=iterationCount, thickness=32, name="populations")
 #c = population_model()
 #print(c)
