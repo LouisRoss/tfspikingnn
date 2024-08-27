@@ -26,11 +26,8 @@ class LayerModule(tf.Module):
       self.decayedpotentials = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='decayedpotentials', trainable=False)
       self.resets = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='resets', trainable=False)
       initialspikes = np.zeros((self.thickness, 1, self.layer_size), dtype=np.int32)
-      initialspikes[0, 0, 318] = 1
-      initialspikes[0, 0, 319] = 1
+      initialspikes[0, 0, 317] = 1
       initialspikes[0, 0, 320] = 1
-      initialspikes[0, 0, 321] = 1
-      initialspikes[0, 0, 322] = 1
       initialspikes[1, 0, 4] = 1
       initialspikes[2, 0, 1] = 1
       initialspikes[3, 0, 1] = 1
@@ -42,7 +39,7 @@ class LayerModule(tf.Module):
 
       self.is_built = True
 
-    # potential(i) += SUM(ij)[spike(i) @ connection(ij)]
+    # potential(j) += SUM(ij)[spike(i) @ connection(ij)]
     self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
 
     # spike(i) = 1 if potential(i) > 12 else 0
@@ -51,11 +48,7 @@ class LayerModule(tf.Module):
     # delaytime(i) = delaytime(i) + 8 if spike(i) else delaytime(i)
     self.delaytimes.assign_add(tf.multiply(self.spikes, 8))
 
-    # potential(i) = potential(i) - 24 if spike(i) else potential(i)
-    #self.resets.assign(tf.cast(tf.multiply(self.spikes, 24), tf.int32))
-    #self.potentials.assign(tf.subtract(self.potentials, self.resets))
-
-    # decaypotential(i) /= 2
+    # decaypotential(i) = potential(i) / 2
     self.decayedpotentials.assign(tf.cast(tf.divide(self.potentials, self.factor), dtype=tf.dtypes.int32))
 
     # decaypotential(i) = 0 if delaytime(i) > 0 else decaypotential(i)
@@ -83,8 +76,6 @@ class LayerModule(tf.Module):
           layer[1][i][j] = 0
 
       for i in range(10, self.layer_size - 10):
-        layer[0][i][i-4] = 5
-        layer[0][i][i-1] = 11
         layer[0][i][i+1] = 11
         layer[0][i][i+4] = 5
         layer[1][i][self.layer_size - (i+2)] = 13
@@ -119,21 +110,6 @@ class PopulationModule(tf.Module):
       #self.spikevalues2.assign(self.population2())
       if log:
         tf.print(self.spikevalues1, summarize=-1, sep=',', output_stream='file://data/fullspike1.csv')
-        """
-        pop = tf.constant(0)
-        while pop < self.thickness:
-          tf.print('Logging population', pop, self.thickname[pop])
-          poplayer = self.spikevalues1[0][0]
-          popname = self.thickname.numpy()
-          tf.print('File name ' + popname)
-          tf.print(poplayer, summarize=-1, sep=',', output_stream='file://data/help.csv')
-          pop = pop + 1
-       """
-      #for spike in self.spikevalues1[0][0]:
-      #  tf.print(spike, end=',', output_stream='file://data/population0.csv')
-      #tf.print(output_stream='file://data/population0.csv')
-      #self.population1()
-      #self.population2()
       i = i+1
 
 
