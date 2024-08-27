@@ -16,15 +16,22 @@ class LayerModule(tf.Module):
     self.factor = tf.constant(factor, dtype=tf.dtypes.int32)
     layer = self.InitializeConnections()
     self.connections = tf.Variable(layer, name='connections', trainable=False)
+    self.delaytimes = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delaytimes', trainable=False)
+    self.delayguards = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delayguards', trainable=False)
 
   def __call__(self):
     # Create variables on first call.
     if not self.is_built:
       self.potentials = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='potentials', trainable=False)
-      self.decayedpotentials = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='potentials', trainable=False)
+      self.decayedpotentials = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='decayedpotentials', trainable=False)
+      self.resets = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='resets', trainable=False)
       initialspikes = np.zeros((self.thickness, 1, self.layer_size), dtype=np.int32)
-      initialspikes[0, 0, 1] = 1
-      initialspikes[1, 0, 1] = 1
+      initialspikes[0, 0, 318] = 1
+      initialspikes[0, 0, 319] = 1
+      initialspikes[0, 0, 320] = 1
+      initialspikes[0, 0, 321] = 1
+      initialspikes[0, 0, 322] = 1
+      initialspikes[1, 0, 4] = 1
       initialspikes[2, 0, 1] = 1
       initialspikes[3, 0, 1] = 1
       initialspikes[4, 0, 1] = 1
@@ -35,15 +42,38 @@ class LayerModule(tf.Module):
 
       self.is_built = True
 
+    # potential(i) += SUM(ij)[spike(i) @ connection(ij)]
     self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
-    self.spikes.assign(tf.cast(tf.greater(self.potentials, 5), tf.int32))
+
+    # spike(i) = 1 if potential(i) > 12 else 0
+    self.spikes.assign(tf.cast(tf.greater(self.potentials, 12), tf.int32))
+
+    # delaytime(i) = delaytime(i) + 8 if spike(i) else delaytime(i)
+    self.delaytimes.assign_add(tf.multiply(self.spikes, 8))
+
+    # potential(i) = potential(i) - 24 if spike(i) else potential(i)
+    #self.resets.assign(tf.cast(tf.multiply(self.spikes, 24), tf.int32))
+    #self.potentials.assign(tf.subtract(self.potentials, self.resets))
+
+    # decaypotential(i) /= 2
     self.decayedpotentials.assign(tf.cast(tf.divide(self.potentials, self.factor), dtype=tf.dtypes.int32))
-    return self.potentials
-    #return self.spikes
+
+    # decaypotential(i) = 0 if delaytime(i) > 0 else decaypotential(i)
+    self.delayguards.assign(tf.cast(tf.less_equal(self.delaytimes, 0), tf.int32))
+    self.decayedpotentials.assign(tf.multiply(self.decayedpotentials, self.delayguards))
+
+    # delaytime(i) = delaytime(i) - 1 if delaytime(i) > 0 else delaytime(i)
+    self.delayguards.assign(tf.cast(tf.subtract(1, self.delayguards), tf.int32))
+    self.delaytimes.assign(tf.cast(tf.subtract(self.delaytimes, self.delayguards), tf.int32))
+
+    #return self.delayguards
+    #return self.delaytimes
+    #return self.potentials
+    return self.spikes
 
   def InitializeConnections(self):
       #layer = tf.cast(tf.random.normal([self.thickness, self.layer_size, self.layer_size], mean=0.0, stddev=10.0), tf.dtypes.int32)
-      layer = np.random.randint(-10, high=10, size=(self.thickness, self.layer_size, self.layer_size))
+      layer = np.random.randint(-25, high=25, size=(self.thickness, self.layer_size, self.layer_size))
       """
       layer = np.zeros((self.thickness, self.layer_size, self.layer_size))
       """
@@ -52,11 +82,12 @@ class LayerModule(tf.Module):
           layer[0][i][j] = 0
           layer[1][i][j] = 0
 
-      for i in range(self.layer_size - 2):
-        layer[0][i][i] = 5
-        layer[0][i][i+1] = 6
-        layer[0][i][i+2] = 5
-        layer[1][i][self.layer_size - (i+2)] = 6
+      for i in range(10, self.layer_size - 10):
+        layer[0][i][i-4] = 5
+        layer[0][i][i-1] = 11
+        layer[0][i][i+1] = 11
+        layer[0][i][i+4] = 5
+        layer[1][i][self.layer_size - (i+2)] = 13
         layer[1][i][self.layer_size - (i+3)] = 5
       layer = tf.cast(layer, tf.dtypes.int32)
       return layer
