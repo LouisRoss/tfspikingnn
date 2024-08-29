@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from parselog import ArrayBuilder
 
-builder = ArrayBuilder('data/fullspike1.csv')
+builder = ArrayBuilder('data/fullspike.csv')
 builder.Build(debug=False)
 linedata = builder.linedata
 

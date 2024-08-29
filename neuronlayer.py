@@ -5,11 +5,13 @@ from datetime import datetime
 
 
 class LayerModule(tf.Module):
-  def __init__(self, layer_size, thickness=1, name=None):
+  def __init__(self, layer_size, thickness, spiketrain, name=None):
     super().__init__(name=name)
     self.is_built = False
     self.layer_size = layer_size
     self.thickness = thickness
+    self.spiketrain = spiketrain
+    self.tick = tf.Variable(0)
     self.tflayer_size = tf.constant(layer_size, dtype=tf.int32)
     factor = np.ones([self.thickness, 1, self.layer_size], dtype=np.int32)
     factor = factor * 2
@@ -26,6 +28,7 @@ class LayerModule(tf.Module):
       self.decayedpotentials = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='decayedpotentials', trainable=False)
       self.resets = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='resets', trainable=False)
       initialspikes = np.zeros((self.thickness, 1, self.layer_size), dtype=np.int32)
+      """
       initialspikes[0, 0, 317] = 1
       initialspikes[0, 0, 320] = 1
       initialspikes[1, 0, 4] = 1
@@ -35,15 +38,19 @@ class LayerModule(tf.Module):
       initialspikes[5, 0, 1] = 1
       initialspikes[6, 0, 1] = 1
       initialspikes[7, 0, 1] = 1
+      """
       self.spikes = tf.Variable(tf.cast(initialspikes, tf.dtypes.int32), trainable=False)
 
       self.is_built = True
+
 
     # potential(j) += SUM(ij)[spike(i) @ connection(ij)]
     self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
 
     # spike(i) = 1 if potential(i) > 12 else 0
     self.spikes.assign(tf.cast(tf.greater(self.potentials, 12), tf.int32))
+    self.spikes.assign_add(self.spiketrain[self.tick])
+    self.tick.assign_add(1)
 
     # delaytime(i) = delaytime(i) + 8 if spike(i) else delaytime(i)
     self.delaytimes.assign_add(tf.multiply(self.spikes, 8))
@@ -63,6 +70,7 @@ class LayerModule(tf.Module):
     #return self.delaytimes
     #return self.potentials
     return self.spikes
+  
 
   def InitializeConnections(self):
       #layer = tf.cast(tf.random.normal([self.thickness, self.layer_size, self.layer_size], mean=0.0, stddev=10.0), tf.dtypes.int32)
@@ -77,7 +85,8 @@ class LayerModule(tf.Module):
 
       for i in range(10, self.layer_size - 10):
         layer[0][i][i+1] = 11
-        layer[0][i][i+4] = 5
+        layer[0][i][i+4] = 8
+        layer[0][i][i+6] = 4
         layer[1][i][self.layer_size - (i+2)] = 13
         layer[1][i][self.layer_size - (i+3)] = 5
       layer = tf.cast(layer, tf.dtypes.int32)
@@ -86,6 +95,7 @@ class LayerModule(tf.Module):
 class PopulationModule(tf.Module):
   def __init__(self, layer_size, iterations, thickness=1, name=None):
     super().__init__(name=name)
+    self.duration = 1000
     self.layer_size = layer_size
     self.iterations = tf.constant(iterations)
     self.thickness = tf.constant(thickness)
@@ -94,22 +104,35 @@ class PopulationModule(tf.Module):
       thicks.append(f'file://data/population{pop}.csv')
     self.thickname = tf.Variable(thicks, dtype=tf.dtypes.string, name='populationnames', trainable=False)
 
-    self.population1 = LayerModule(layer_size=self.layer_size, thickness=self.thickness, name="pop1")
-    self.population2 = LayerModule(layer_size=self.layer_size, thickness=self.thickness, name="pop2")
-    self.spikevalues1 = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), trainable=False)
-    self.spikevalues2 = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), trainable=False)
+    spiketrain = self.GenerateSpikes()
+    self.population = LayerModule(layer_size=self.layer_size, thickness=self.thickness, spiketrain=spiketrain, name="population")
+    self.spikevalues = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), trainable=False)
+
+  def GenerateSpikes(self):
+    initialspikes = np.zeros((self.duration, self.thickness, 1, self.layer_size), dtype=np.int32)
+    for tick in range(0, 20, 2):
+      initialspikes[tick, 0, 0, 317] = 1
+      initialspikes[tick+1, 0, 0, 320] = 1
+
+    initialspikes[0, 1, 0, 4] = 1
+    initialspikes[0, 2, 0, 1] = 1
+    #initialspikes[0, 3, 0, 1] = 1
+    initialspikes[0, 4, 0, 1] = 1
+    initialspikes[0, 5, 0, 1] = 1
+    initialspikes[0, 6, 0, 1] = 1
+    initialspikes[0, 7, 0, 1] = 1
+    return tf.Variable(tf.cast(initialspikes, tf.dtypes.int32), trainable=False)
 
   @tf.function
   def __call__(self, log=False):
     if log:
-        tf.print(self.population1.connections, summarize=-1, sep=',', output_stream='file://data/fullconnections1.csv')
+        tf.print(self.population.connections, summarize=-1, sep=',', output_stream='file://data/fullconnections.csv')
 
     i = tf.constant(0)
     while i < self.iterations:
-      self.spikevalues1.assign(self.population1())
-      #self.spikevalues2.assign(self.population2())
+      self.spikevalues.assign(self.population())
       if log:
-        tf.print(self.spikevalues1, summarize=-1, sep=',', output_stream='file://data/fullspike1.csv')
+        tf.print(self.spikevalues, summarize=-1, sep=',', output_stream='file://data/fullspike.csv')
       i = i+1
 
 
