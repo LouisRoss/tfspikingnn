@@ -8,5 +8,6 @@ docker run \
 -p 0.0.0.0:23:22 \
 --runtime=nvidia \
 -v "$(pwd)":/tensorflow \
+-v /media/internal/record/tfspikingnn:/record \
 louisross/tensorflow:1.0 \
 bash
