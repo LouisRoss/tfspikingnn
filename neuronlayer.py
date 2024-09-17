@@ -1,7 +1,29 @@
+import re
+import os
 import tensorflow as tf
 import numpy as np
 from datetime import datetime
-from datetime import datetime
+from dataprep import DataPrep
+
+
+path = '/record/'
+basefoldername = 'simulation'
+fileparse = r'^([a-zA-Z]+)(\d*)$'
+
+def GetNextSimulationNumber():
+  sims = []
+  obj = os.scandir(path)
+  for entry in obj:
+    if entry.is_dir():
+      sims.append(int(re.split(fileparse, entry.name)[2]))
+
+  return max(sims) + 1
+
+def MakeSimulationFolder(simulationNumber):
+  foldername = path + basefoldername + str(simulationNumber)
+  os.makedirs(foldername, exist_ok=True)
+
+  return foldername
 
 
 class LayerModule(tf.Module):
@@ -21,7 +43,7 @@ class LayerModule(tf.Module):
     self.delaytimes = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delaytimes', trainable=False)
     self.delayguards = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delayguards', trainable=False)
 
-  def __call__(self):
+  def __call__(self, datafolder, log=False):
     # Create variables on first call.
     if not self.is_built:
       self.potentials = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='potentials', trainable=False)
@@ -66,6 +88,9 @@ class LayerModule(tf.Module):
     self.delayguards.assign(tf.cast(tf.subtract(1, self.delayguards), tf.int32))
     self.delaytimes.assign(tf.cast(tf.subtract(self.delaytimes, self.delayguards), tf.int32))
 
+    if log:
+      tf.print(self.spikes, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullspike.dat')
+      tf.print(self.potentials, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullactivations.dat')
     #return self.delayguards
     #return self.delaytimes
     #return self.potentials
@@ -124,15 +149,13 @@ class PopulationModule(tf.Module):
     return tf.Variable(tf.cast(initialspikes, tf.dtypes.int32), trainable=False)
 
   @tf.function
-  def __call__(self, log=False):
+  def __call__(self, datafolder, log=False):
     if log:
-        tf.print(self.population.connections, summarize=-1, sep=',', output_stream='file://data/fullconnections.csv')
+        tf.print(self.population.connections, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullconnections.dat')
 
     i = tf.constant(0)
     while i < self.iterations:
-      self.spikevalues.assign(self.population())
-      if log:
-        tf.print(self.spikevalues, summarize=-1, sep=',', output_stream='file://data/fullspike.csv')
+      self.spikevalues.assign(self.population(datafolder, log))
       i = i+1
 
 
@@ -164,16 +187,27 @@ def TracePopulationModel():
         step=0,
         profiler_outdir=logdir)
 
-#tf.debugging.set_log_device_placement(True)
+def Run():
+  #tf.debugging.set_log_device_placement(True)
 
-iterationCount = 640
-population_model = PopulationModule(layer_size=640, iterations=iterationCount, thickness=32, name="populations")
-#c = population_model()
-#print(c)
-#tf.debugging.set_log_device_placement(False)
+  simulationNumber = GetNextSimulationNumber()
+  datafolder = MakeSimulationFolder(simulationNumber) + '/'
 
-startTime = datetime.now()
-population_model(log=True)
-endTime = datetime.now()
-duration = endTime - startTime
-print(f'Run time for {iterationCount} iterations: {duration} or {duration.seconds / iterationCount} s/iter')
+  iterationCount = 1000
+  population_model = PopulationModule(layer_size=784, iterations=iterationCount, thickness=32, name="populations")
+  #c = population_model()
+  #print(c)
+  #tf.debugging.set_log_device_placement(False)
+
+  startTime = datetime.now()
+  population_model(datafolder=datafolder, log=True)
+  endTime = datetime.now()
+  duration = endTime - startTime
+  print(f'Run time for {iterationCount} iterations: {duration} or {duration.seconds / iterationCount} s/iter')
+
+  with DataPrep(simulationNumber) as prep:
+    prep.BuildConnections()
+    prep.BuildSpikes()
+    prep.BuildActivations()
+
+Run()
