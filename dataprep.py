@@ -26,25 +26,19 @@ class DataPrep:
         self.index = {}
 
     def __enter__(self):
-        indexLoaded = False
         if os.path.exists(self.MakeIndexFilePath()):
-            try:
-                self.index = json.loads(self.MakeIndexFilePath())
-                indexLoaded = True
-            except:
-                pass
+            os.remove(self.MakeIndexFilePath())
 
-        if not indexLoaded:
-            self.index = {
-                'simulation': self.simulationNumber,
-                'populations': 0,
-                'connections': [
-                ],
-                'spikes': [
-                ],
-                'activations': [
-                ]
-            }
+        self.index = {
+            'simulation': self.simulationNumber,
+            'populations': 0,
+            'connections': [
+            ],
+            'spikes': [
+            ],
+            'activations': [
+            ]
+        }
 
         return self
 
@@ -71,21 +65,40 @@ class DataPrep:
     def MakeActivationsSourceFilePath(self):
         return self.MakeSimulationPath() + DataPrep.activationSourceFilename
 
-    # Paths to output files.    
+    # Paths to output files.
+    def RemoveFilesFromOutputFolder(self, rootdir):
+        files = os.listdir(rootdir)
+        for file in files:
+            filepath = os.path.join(rootdir, file)
+            if os.path.isfile(filepath):
+                os.remove(filepath)
+
     def MakeConnectionOutputFilePath(self, population):
-        if not os.path.exists(self.MakeSimulationPath() + DataPrep.connectionsFolder):
-            os.makedirs(self.MakeSimulationPath() + DataPrep.connectionsFolder)
-        return self.MakeSimulationPath() + DataPrep.connectionsFolder + DataPrep.connectionBaseFilename + str(population) + '.csv'
+        rootdir = self.MakeSimulationPath() + DataPrep.connectionsFolder
+        if not os.path.exists(rootdir):
+            os.makedirs(rootdir)
+        else:
+            self.RemoveFilesFromOutputFolder(rootdir)
+
+        return rootdir + DataPrep.connectionBaseFilename + str(population) + '.csv'
 
     def MakeSpikeOutputFilePath(self, population):
-        if not os.path.exists(self.MakeSimulationPath() + DataPrep.spikesFolder):
-            os.makedirs(self.MakeSimulationPath() + DataPrep.spikesFolder)
-        return self.MakeSimulationPath() + DataPrep.spikesFolder + DataPrep.spikeBaseFilename + str(population) + '.csv'
+        rootdir = self.MakeSimulationPath() + DataPrep.spikesFolder
+        if not os.path.exists(rootdir):
+            os.makedirs(rootdir)
+        else:
+            self.RemoveFilesFromOutputFolder(rootdir)
+
+        return rootdir + DataPrep.spikeBaseFilename + str(population) + '.csv'
 
     def MakeActivationOutputFilePath(self, population):
-        if not os.path.exists(self.MakeSimulationPath() + DataPrep.activationsFolder):
-            os.makedirs(self.MakeSimulationPath() + DataPrep.activationsFolder)
-        return self.MakeSimulationPath() + DataPrep.activationsFolder + DataPrep.activationBaseFilename + str(population) + '.csv'
+        rootdir = self.MakeSimulationPath() + DataPrep.activationsFolder
+        if not os.path.exists(rootdir):
+            os.makedirs(rootdir)
+        else:
+            self.RemoveFilesFromOutputFolder(rootdir)
+
+        return rootdir + DataPrep.activationBaseFilename + str(population) + '.csv'
 
 
     def BuildConnections(self, debug=False):
