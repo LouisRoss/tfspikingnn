@@ -28,6 +28,9 @@ class DataPrep:
     def __enter__(self):
         if os.path.exists(self.MakeIndexFilePath()):
             os.remove(self.MakeIndexFilePath())
+        self.MakeCleanOutputFolder(self.MakeSimulationPath() + DataPrep.connectionsFolder)
+        self.MakeCleanOutputFolder(self.MakeSimulationPath() + DataPrep.spikesFolder)
+        self.MakeCleanOutputFolder(self.MakeSimulationPath() + DataPrep.activationsFolder)
 
         self.index = {
             'simulation': self.simulationNumber,
@@ -66,39 +69,33 @@ class DataPrep:
         return self.MakeSimulationPath() + DataPrep.activationSourceFilename
 
     # Paths to output files.
-    def RemoveFilesFromOutputFolder(self, rootdir):
-        files = os.listdir(rootdir)
-        for file in files:
-            filepath = os.path.join(rootdir, file)
-            if os.path.isfile(filepath):
-                os.remove(filepath)
-
-    def MakeConnectionOutputFilePath(self, population):
-        rootdir = self.MakeSimulationPath() + DataPrep.connectionsFolder
+    def MakeCleanOutputFolder(self, rootdir):
         if not os.path.exists(rootdir):
             os.makedirs(rootdir)
         else:
-            self.RemoveFilesFromOutputFolder(rootdir)
+            files = os.listdir(rootdir)
+            for file in files:
+                filepath = os.path.join(rootdir, file)
+                if os.path.isfile(filepath):
+                    os.remove(filepath)
 
+    def MakeConnectionOutputFilePath(self, population):
+        rootdir = self.MakeSimulationPath() + DataPrep.connectionsFolder
         return rootdir + DataPrep.connectionBaseFilename + str(population) + '.csv'
 
     def MakeSpikeOutputFilePath(self, population):
         rootdir = self.MakeSimulationPath() + DataPrep.spikesFolder
-        if not os.path.exists(rootdir):
-            os.makedirs(rootdir)
-        else:
-            self.RemoveFilesFromOutputFolder(rootdir)
-
         return rootdir + DataPrep.spikeBaseFilename + str(population) + '.csv'
 
     def MakeActivationOutputFilePath(self, population):
         rootdir = self.MakeSimulationPath() + DataPrep.activationsFolder
-        if not os.path.exists(rootdir):
-            os.makedirs(rootdir)
-        else:
-            self.RemoveFilesFromOutputFolder(rootdir)
-
         return rootdir + DataPrep.activationBaseFilename + str(population) + '.csv'
+
+    def BuildCsvFile(self, filename, data):
+        print(f'Writing {len(data)} lines into {filename}')
+        with open(filename, 'w') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerows(data)
 
 
     def BuildConnections(self, debug=False):
@@ -122,10 +119,7 @@ class DataPrep:
         for pop in range(populationCount):
             connectionFile = self.MakeConnectionOutputFilePath(pop)
             self.index['connections'].append(connectionFile)
-            with open(connectionFile, 'w') as csvfile:
-                csvwriter = csv.writer(csvfile)
-                for line in linedata[pop]:
-                    csvwriter.writerow(line)
+            self.BuildCsvFile(connectionFile, linedata[pop])
 
     def BuildSpikes(self, debug=False):
         # Convert the raw arrays emitted by TensorFlow to CSV files, one set of spikes per population.
@@ -154,10 +148,7 @@ class DataPrep:
         for pop in range(len(data)):
             spikeFile = self.MakeSpikeOutputFilePath(pop)
             self.index['spikes'].append(spikeFile)
-            with open(spikeFile, 'w') as csvfile:
-                csvwriter = csv.writer(csvfile)
-                for line in data[pop]:
-                    csvwriter.writerow(line)
+            self.BuildCsvFile(spikeFile, data[pop])
 
 
     def BuildActivations(self, debug=False):
@@ -187,8 +178,5 @@ class DataPrep:
         for pop in range(len(data)):
             activationFile = self.MakeActivationOutputFilePath(pop)
             self.index['activations'].append(activationFile)
-            with open(activationFile, 'w') as csvfile:
-                csvwriter = csv.writer(csvfile)
-                for line in data[pop]:
-                    csvwriter.writerow(line)
+            self.BuildCsvFile(activationFile, data[pop])
 
