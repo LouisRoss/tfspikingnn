@@ -17,4 +17,5 @@ for ax in axs.flat:
 """
 fig, ax = plt.subplots(figsize=(100,100))
 ax.imshow(linedata[0])
-plt.savefig('images/connections.png', dpi=72)
+#ax.imshow(linedata[0])
+#plt.savefig('images/connections.png', dpi=72)
