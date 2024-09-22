@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from parselog import ArrayBuilder
 
-builder = ArrayBuilder('data/fullconnections.csv')
+builder = ArrayBuilder('/record/simulation0/fullconnections.dat')
 builder.Build(debug=False)
 linedata = builder.linedata
 """

@@ -164,3 +164,4 @@ cython_debug/
 
 # Additional project-specific stuff
 data/*
+images/*
