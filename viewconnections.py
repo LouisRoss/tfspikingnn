@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from parselog import ArrayBuilder
 
-builder = ArrayBuilder('/record/simulation0/fullconnections.dat')
+builder = ArrayBuilder('/media/internal/record/tfspikingnn/simulation4/fullconnections.dat')
 builder.Build(debug=False)
 linedata = builder.linedata
 """
@@ -19,3 +19,4 @@ fig, ax = plt.subplots(figsize=(100,100))
 ax.imshow(linedata[0])
 #ax.imshow(linedata[0])
 #plt.savefig('images/connections.png', dpi=72)
+plt.show()

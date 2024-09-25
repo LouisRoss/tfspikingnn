@@ -38,10 +38,24 @@ class LayerModule(tf.Module):
     factor = np.ones([self.thickness, 1, self.layer_size], dtype=np.int32)
     factor = factor * 2
     self.factor = tf.constant(factor, dtype=tf.dtypes.int32)
+    self.threshold = tf.constant(12)
+    hebbdelay = np.ones([self.thickness, 1, self.layer_size], dtype=np.int32)
+    hebbdelay = hebbdelay * 8
+    self.hebbdelay = tf.constant(hebbdelay, dtype=tf.dtypes.int32)
     layer = self.InitializeConnections()
     self.connections = tf.Variable(layer, name='connections', trainable=False)
     self.delaytimes = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delaytimes', trainable=False)
     self.delayguards = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delayguards', trainable=False)
+
+  def HebbLearning(self):
+    # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
+    activehebb = tf.zeros([self.thickness, self.layer_size,self.layer_size], dtype=tf.dtypes.int32) + tf.transpose(self.hebbtimers, perm=[0,2,1]) * self.spikes
+
+    # Add resulting columns container hebbtimers to existing connections, capping any connection at the spike threshold.
+    self.connections.assign(tf.cast(tf.maximum(self.connections + activehebb, self.threshold), tf.int32))
+
+    self.hebbtimers.assign_add((self.spikes * self.hebbdelay))
+    self.hebbtimers.assign(tf.cast(tf.maximum(tf.subtract(self.hebbtimers, 1), 0), tf.int32))
 
   def __call__(self, datafolder, log=False):
     # Create variables on first call.
@@ -49,6 +63,7 @@ class LayerModule(tf.Module):
       self.potentials = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='potentials', trainable=False)
       self.decayedpotentials = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='decayedpotentials', trainable=False)
       self.resets = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='resets', trainable=False)
+      self.hebbtimers = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='hebbtimers', trainable=False)
       initialspikes = np.zeros((self.thickness, 1, self.layer_size), dtype=np.int32)
       """
       initialspikes[0, 0, 317] = 1
@@ -69,8 +84,9 @@ class LayerModule(tf.Module):
     # potential(j) += SUM(ij)[spike(i) @ connection(ij)]
     self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
 
-    # spike(i) = 1 if potential(i) > 12 else 0
-    self.spikes.assign(tf.cast(tf.greater(self.potentials, 12), tf.int32))
+    # spike(i) = 1 if potential(i) > self.threshold else 0
+    self.spikes.assign(tf.cast(tf.greater(self.potentials, self.threshold), tf.int32))
+    self.HebbLearning()
     self.spikes.assign_add(self.spiketrain[self.tick])
     self.tick.assign_add(1)
 
