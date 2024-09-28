@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from parselog import ArrayBuilder
 
-builder = ArrayBuilder('/media/internal/record/tfspikingnn/simulation4/fullspike.dat')
+builder = ArrayBuilder('/media/internal/record/tfspikingnn/simulation10/fullactivations.dat')
 builder.Build(debug=False)
 linedata = builder.linedata
 

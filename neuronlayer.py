@@ -39,8 +39,9 @@ class LayerModule(tf.Module):
     factor = factor * 2
     self.factor = tf.constant(factor, dtype=tf.dtypes.int32)
     self.threshold = tf.constant(12)
+    self.hebblearning = tf.constant(2)
     hebbdelay = np.ones([self.thickness, 1, self.layer_size], dtype=np.int32)
-    hebbdelay = hebbdelay * 8
+    hebbdelay = hebbdelay * 7
     self.hebbdelay = tf.constant(hebbdelay, dtype=tf.dtypes.int32)
     layer = self.InitializeConnections()
     self.connections = tf.Variable(layer, name='connections', trainable=False)
@@ -49,10 +50,10 @@ class LayerModule(tf.Module):
 
   def HebbLearning(self):
     # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
-    activehebb = tf.zeros([self.thickness, self.layer_size,self.layer_size], dtype=tf.dtypes.int32) + tf.transpose(self.hebbtimers, perm=[0,2,1]) * self.spikes
+    activehebb = tf.zeros([self.thickness, self.layer_size,self.layer_size], dtype=tf.dtypes.int32) + tf.maximum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning) * self.spikes
 
     # Add resulting columns container hebbtimers to existing connections, capping any connection at the spike threshold.
-    self.connections.assign(tf.cast(tf.maximum(self.connections + activehebb, self.threshold), tf.int32))
+    self.connections.assign(tf.cast(tf.minimum(self.connections + activehebb, self.threshold), tf.int32))
 
     self.hebbtimers.assign_add((self.spikes * self.hebbdelay))
     self.hebbtimers.assign(tf.cast(tf.maximum(tf.subtract(self.hebbtimers, 1), 0), tf.int32))
@@ -65,17 +66,6 @@ class LayerModule(tf.Module):
       self.resets = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='resets', trainable=False)
       self.hebbtimers = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='hebbtimers', trainable=False)
       initialspikes = np.zeros((self.thickness, 1, self.layer_size), dtype=np.int32)
-      """
-      initialspikes[0, 0, 317] = 1
-      initialspikes[0, 0, 320] = 1
-      initialspikes[1, 0, 4] = 1
-      initialspikes[2, 0, 1] = 1
-      initialspikes[3, 0, 1] = 1
-      initialspikes[4, 0, 1] = 1
-      initialspikes[5, 0, 1] = 1
-      initialspikes[6, 0, 1] = 1
-      initialspikes[7, 0, 1] = 1
-      """
       self.spikes = tf.Variable(tf.cast(initialspikes, tf.dtypes.int32), trainable=False)
 
       self.is_built = True
@@ -83,33 +73,32 @@ class LayerModule(tf.Module):
 
     # potential(j) += SUM(ij)[spike(i) @ connection(ij)]
     self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
+    #self.potentials.assign(((self.spiketrain[self.tick] + self.spikes) @ self.connections) + self.decayedpotentials)
+    #self.tick.assign_add(1)
 
-    # spike(i) = 1 if potential(i) > self.threshold else 0
-    self.spikes.assign(tf.cast(tf.greater(self.potentials, self.threshold), tf.int32))
+    # Spike if above threshold, but only if delaytime is exhausted.
+    #self.spikes.assign(tf.cast(tf.greater_equal(self.potentials, self.threshold), tf.int32))
+    self.spikes.assign(tf.cast(tf.greater_equal(tf.multiply(self.potentials, self.delayguards), self.threshold), tf.int32))
     self.HebbLearning()
-    self.spikes.assign_add(self.spiketrain[self.tick])
+    self.spikes.assign(tf.minimum(self.spikes + self.spiketrain[self.tick], 1))
     self.tick.assign_add(1)
 
     # delaytime(i) = delaytime(i) + 8 if spike(i) else delaytime(i)
     self.delaytimes.assign_add(tf.multiply(self.spikes, 8))
 
-    # decaypotential(i) = potential(i) / 2
-    self.decayedpotentials.assign(tf.cast(tf.divide(self.potentials, self.factor), dtype=tf.dtypes.int32))
-
-    # decaypotential(i) = 0 if delaytime(i) > 0 else decaypotential(i)
+    # delayguards can be used to filter out cells with delaytime > 0.  Delayguard is 1 if delaytime <= 0.
     self.delayguards.assign(tf.cast(tf.less_equal(self.delaytimes, 0), tf.int32))
-    self.decayedpotentials.assign(tf.multiply(self.decayedpotentials, self.delayguards))
 
-    # delaytime(i) = delaytime(i) - 1 if delaytime(i) > 0 else delaytime(i)
-    self.delayguards.assign(tf.cast(tf.subtract(1, self.delayguards), tf.int32))
-    self.delaytimes.assign(tf.cast(tf.subtract(self.delaytimes, self.delayguards), tf.int32))
+    # decaypotential(i) = potential(i) / 2, or 0 if delaytime is delaying.
+    self.decayedpotentials.assign(tf.cast(tf.divide(tf.multiply(self.potentials, self.delayguards), self.factor), dtype=tf.dtypes.int32))
+
+    self.delaytimes.assign(tf.cast(tf.maximum(tf.subtract(self.delaytimes, 1), 0), tf.int32))
 
     if log:
       tf.print(self.spikes, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullspike.dat')
       tf.print(self.potentials, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullactivations.dat')
-    #return self.delayguards
-    #return self.delaytimes
-    #return self.potentials
+      tf.print(self.hebbtimers, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullhebbtimers.dat')
+
     return self.spikes
   
 
@@ -124,12 +113,23 @@ class LayerModule(tf.Module):
           layer[0][i][j] = 0
           layer[1][i][j] = 0
 
-      for i in range(10, self.layer_size - 10):
-        layer[0][i][i+1] = 11
-        layer[0][i][i+4] = 8
-        layer[0][i][i+6] = 4
-        layer[1][i][self.layer_size - (i+2)] = 13
-        layer[1][i][self.layer_size - (i+3)] = 5
+      I1 = 10
+      I2 = 10 + 28
+      Inh1 = 11
+      Inh2 = 11 + 28
+      N1 = 15
+      N2 = 15 + 28
+
+      for i in range(0, 20*28, 4*28):
+        layer[0][i+I1][i+N1] = self.threshold+1
+        layer[0][i+I2][i+N2] = self.threshold+1
+        layer[0][i+N1][i+N2] = 5
+        layer[0][i+N2][i+N1] = 5
+        layer[0][i+N1][i+Inh1] = self.threshold+1
+        layer[0][i+N2][i+Inh2] = self.threshold+1
+        layer[0][i+Inh1][I1] = -10
+        layer[0][i+Inh2][I2] = -10
+
       layer = tf.cast(layer, tf.dtypes.int32)
       return layer
 
@@ -151,17 +151,17 @@ class PopulationModule(tf.Module):
 
   def GenerateSpikes(self):
     initialspikes = np.zeros((self.duration, self.thickness, 1, self.layer_size), dtype=np.int32)
-    for tick in range(0, 20, 2):
-      initialspikes[tick, 0, 0, 317] = 1
-      initialspikes[tick+1, 0, 0, 320] = 1
 
-    initialspikes[0, 1, 0, 4] = 1
-    initialspikes[0, 2, 0, 1] = 1
-    #initialspikes[0, 3, 0, 1] = 1
-    initialspikes[0, 4, 0, 1] = 1
-    initialspikes[0, 5, 0, 1] = 1
-    initialspikes[0, 6, 0, 1] = 1
-    initialspikes[0, 7, 0, 1] = 1
+    I1 = 10
+    I2 = 10 + 28
+
+    for tick in range(0, self.duration, 20):
+      for i in range(0, 20*28, 4*28):
+        initialspikes[tick, 0, 0, i+I1] = 1
+        #initialspikes[tick+1, 0, 0, i+I1] = 1
+        initialspikes[tick+5, 0, 0, i+I2] = 1
+        #initialspikes[tick+6, 0, 0, i+I2] = 1
+
     return tf.Variable(tf.cast(initialspikes, tf.dtypes.int32), trainable=False)
 
   @tf.function
@@ -225,5 +225,6 @@ def Run():
     prep.BuildConnections()
     prep.BuildSpikes()
     prep.BuildActivations()
+    prep.BuildHebbianTimers()
 
 Run()
