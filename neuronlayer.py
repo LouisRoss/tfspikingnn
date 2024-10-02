@@ -43,6 +43,7 @@ class LayerModule(tf.Module):
     hebbdelay = np.ones([self.thickness, 1, self.layer_size], dtype=np.int32)
     hebbdelay = hebbdelay * 7
     self.hebbdelay = tf.constant(hebbdelay, dtype=tf.dtypes.int32)
+    self.activehebbbase = tf.zeros([self.thickness, self.layer_size, self.layer_size], dtype=tf.dtypes.int32)
     layer = self.InitializeConnections()
     self.connections = tf.Variable(layer, name='connections', trainable=False)
     self.delaytimes = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delaytimes', trainable=False)
@@ -50,7 +51,8 @@ class LayerModule(tf.Module):
 
   def HebbLearning(self):
     # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
-    activehebb = tf.zeros([self.thickness, self.layer_size,self.layer_size], dtype=tf.dtypes.int32) + tf.maximum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning) * self.spikes
+    activehebb = (self.activehebbbase + tf.minimum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning)) * self.spikes
+    #activehebb = tf.maximum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning) * self.spikes
 
     # Add resulting columns container hebbtimers to existing connections, capping any connection at the spike threshold.
     self.connections.assign(tf.cast(tf.minimum(self.connections + activehebb, self.threshold), tf.int32))
@@ -73,14 +75,26 @@ class LayerModule(tf.Module):
 
     # potential(j) += SUM(ij)[spike(i) @ connection(ij)]
     self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
+    #self.potentials.assign(self.spikes @ self.connections)
     #self.potentials.assign(((self.spiketrain[self.tick] + self.spikes) @ self.connections) + self.decayedpotentials)
     #self.tick.assign_add(1)
 
     # Spike if above threshold, but only if delaytime is exhausted.
     #self.spikes.assign(tf.cast(tf.greater_equal(self.potentials, self.threshold), tf.int32))
     self.spikes.assign(tf.cast(tf.greater_equal(tf.multiply(self.potentials, self.delayguards), self.threshold), tf.int32))
-    self.HebbLearning()
-    self.spikes.assign(tf.minimum(self.spikes + self.spiketrain[self.tick], 1))
+
+    # DO HEBBIAN LEARNING
+    # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
+    activehebb = (self.activehebbbase + tf.minimum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning)) * self.spikes
+    #activehebb = tf.maximum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning) * self.spikes
+
+    # Add resulting columns container hebbtimers to existing connections, capping any connection at the spike threshold.
+    self.connections.assign(tf.cast(tf.minimum(self.connections + activehebb, self.threshold), tf.int32))
+
+    self.hebbtimers.assign_add((self.spikes * self.hebbdelay))
+    self.hebbtimers.assign(tf.cast(tf.maximum(tf.subtract(self.hebbtimers, 1), 0), tf.int32))
+
+    self.spikes.assign(tf.cast(tf.minimum(self.spikes + self.spiketrain[self.tick], 1), tf.int32))
     self.tick.assign_add(1)
 
     # delaytime(i) = delaytime(i) + 8 if spike(i) else delaytime(i)
@@ -95,6 +109,7 @@ class LayerModule(tf.Module):
     self.delaytimes.assign(tf.cast(tf.maximum(tf.subtract(self.delaytimes, 1), 0), tf.int32))
 
     if log:
+      tf.print(self.connections, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullconnections.dat')
       tf.print(self.spikes, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullspike.dat')
       tf.print(self.potentials, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullactivations.dat')
       tf.print(self.hebbtimers, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullhebbtimers.dat')
@@ -104,14 +119,14 @@ class LayerModule(tf.Module):
 
   def InitializeConnections(self):
       #layer = tf.cast(tf.random.normal([self.thickness, self.layer_size, self.layer_size], mean=0.0, stddev=10.0), tf.dtypes.int32)
-      layer = np.random.randint(-25, high=25, size=(self.thickness, self.layer_size, self.layer_size))
-      """
       layer = np.zeros((self.thickness, self.layer_size, self.layer_size))
       """
+      layer = np.random.randint(-25, high=25, size=(self.thickness, self.layer_size, self.layer_size))
       for i in range(self.layer_size):
         for j in range(self.layer_size):
           layer[0][i][j] = 0
           layer[1][i][j] = 0
+      """
 
       I1 = 10
       I2 = 10 + 28
@@ -129,7 +144,9 @@ class LayerModule(tf.Module):
         layer[0][i+N2][i+Inh2] = self.threshold+1
         layer[0][i+Inh1][I1] = -10
         layer[0][i+Inh2][I2] = -10
+         
 
+      connspec = [['I1-N2',I1,N1], ['I2-N2',I2,N2],['N1-N2',N1,N2],['N2-N1',N2,N1],['N1-Inh1',N1,Inh1],['N2-Inh2',N2,Inh2],['Inh1-I1',Inh1,I1],['Inh2-I2',Inh2,I2]]
       layer = tf.cast(layer, tf.dtypes.int32)
       return layer
 
@@ -154,13 +171,18 @@ class PopulationModule(tf.Module):
 
     I1 = 10
     I2 = 10 + 28
-
+    """
     for tick in range(0, self.duration, 20):
       for i in range(0, 20*28, 4*28):
         initialspikes[tick, 0, 0, i+I1] = 1
         #initialspikes[tick+1, 0, 0, i+I1] = 1
         initialspikes[tick+5, 0, 0, i+I2] = 1
         #initialspikes[tick+6, 0, 0, i+I2] = 1
+    """
+
+    initialspikes[0, 0, 0, I1] = 1
+    initialspikes[5, 0, 0, I2] = 1
+    initialspikes[20, 0, 0, I1] = 1
 
     return tf.Variable(tf.cast(initialspikes, tf.dtypes.int32), trainable=False)
 
@@ -209,7 +231,7 @@ def Run():
   simulationNumber = GetNextSimulationNumber()
   datafolder = MakeSimulationFolder(simulationNumber) + '/'
 
-  iterationCount = 1000
+  iterationCount = 100
   population_model = PopulationModule(layer_size=784, iterations=iterationCount, thickness=32, name="populations")
   #c = population_model()
   #print(c)
@@ -222,7 +244,7 @@ def Run():
   print(f'Run time for {iterationCount} iterations: {duration} or {duration.seconds / iterationCount} s/iter')
 
   with DataPrep(simulationNumber) as prep:
-    prep.BuildConnections()
+    #prep.BuildConnections()
     prep.BuildSpikes()
     prep.BuildActivations()
     prep.BuildHebbianTimers()

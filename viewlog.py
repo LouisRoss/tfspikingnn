@@ -2,7 +2,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from parselog import ArrayBuilder
 
-builder = ArrayBuilder('/media/internal/record/tfspikingnn/simulation10/fullactivations.dat')
+simulationnumber = 22
+#builder = ArrayBuilder('/media/internal/record/tfspikingnn/simulation' + str(simulationnumber) + '/fullspike.dat')
+builder = ArrayBuilder('/media/internal/record/tfspikingnn/simulation' + str(simulationnumber) + '/fullactivations.dat')
+#builder = ArrayBuilder('/media/internal/record/tfspikingnn/simulation' + str(simulationnumber) + '/fullhebbtimers.dat')
 builder.Build(debug=False)
 linedata = builder.linedata
 
@@ -19,6 +22,9 @@ for iteration in range(len(linedata)):
     for pop in range(8):
         data[pop].append(linedata[iteration][population+pop])
 
+fig, ax = plt.subplots(figsize=(100,100))
+ax.imshow(data[0])
+"""
 fig, axs = plt.subplots(nrows=2, ncols=4, figsize=(10,50), layout="constrained")
 print(axs)
 
@@ -27,4 +33,5 @@ for ax in axs.flat:
     ax.imshow(data[pop])
     pop += 1
 
+"""
 plt.show()
