@@ -52,7 +52,18 @@ class LayerModule(tf.Module):
   def HebbLearning(self):
     # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
     activehebb = (self.activehebbbase + tf.minimum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning)) * self.spikes
-    #activehebb = tf.maximum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning) * self.spikes
+
+    # Add resulting columns container hebbtimers to existing connections, capping any connection at the spike threshold.
+    # Remember to exclude any connections that are not already above zero.
+    activehebb = tf.multiply(tf.cast(tf.greater(self.connections, 0), tf.int32), activehebb)
+    self.connections.assign(tf.cast(tf.minimum(self.connections + activehebb, self.threshold), tf.int32))
+
+    self.hebbtimers.assign_add((self.spikes * self.hebbdelay))
+    self.hebbtimers.assign(tf.cast(tf.maximum(tf.subtract(self.hebbtimers, 1), 0), tf.int32))
+
+  def HebbLearningEager(self):
+    # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
+    activehebb = (self.activehebbbase + tf.minimum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning)) * self.spikes
 
     # Add resulting columns container hebbtimers to existing connections, capping any connection at the spike threshold.
     self.connections.assign(tf.cast(tf.minimum(self.connections + activehebb, self.threshold), tf.int32))
@@ -79,20 +90,11 @@ class LayerModule(tf.Module):
     #self.potentials.assign(((self.spiketrain[self.tick] + self.spikes) @ self.connections) + self.decayedpotentials)
     #self.tick.assign_add(1)
 
+    self.HebbLearning()
+
     # Spike if above threshold, but only if delaytime is exhausted.
     #self.spikes.assign(tf.cast(tf.greater_equal(self.potentials, self.threshold), tf.int32))
     self.spikes.assign(tf.cast(tf.greater_equal(tf.multiply(self.potentials, self.delayguards), self.threshold), tf.int32))
-
-    # DO HEBBIAN LEARNING
-    # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
-    activehebb = (self.activehebbbase + tf.minimum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning)) * self.spikes
-    #activehebb = tf.maximum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning) * self.spikes
-
-    # Add resulting columns container hebbtimers to existing connections, capping any connection at the spike threshold.
-    self.connections.assign(tf.cast(tf.minimum(self.connections + activehebb, self.threshold), tf.int32))
-
-    self.hebbtimers.assign_add((self.spikes * self.hebbdelay))
-    self.hebbtimers.assign(tf.cast(tf.maximum(tf.subtract(self.hebbtimers, 1), 0), tf.int32))
 
     self.spikes.assign(tf.cast(tf.minimum(self.spikes + self.spiketrain[self.tick], 1), tf.int32))
     self.tick.assign_add(1)
@@ -171,18 +173,14 @@ class PopulationModule(tf.Module):
 
     I1 = 10
     I2 = 10 + 28
-    """
+    
     for tick in range(0, self.duration, 20):
       for i in range(0, 20*28, 4*28):
         initialspikes[tick, 0, 0, i+I1] = 1
         #initialspikes[tick+1, 0, 0, i+I1] = 1
         initialspikes[tick+5, 0, 0, i+I2] = 1
         #initialspikes[tick+6, 0, 0, i+I2] = 1
-    """
-
-    initialspikes[0, 0, 0, I1] = 1
-    initialspikes[5, 0, 0, I2] = 1
-    initialspikes[20, 0, 0, I1] = 1
+    
 
     return tf.Variable(tf.cast(initialspikes, tf.dtypes.int32), trainable=False)
 
@@ -231,7 +229,7 @@ def Run():
   simulationNumber = GetNextSimulationNumber()
   datafolder = MakeSimulationFolder(simulationNumber) + '/'
 
-  iterationCount = 100
+  iterationCount = 1000
   population_model = PopulationModule(layer_size=784, iterations=iterationCount, thickness=32, name="populations")
   #c = population_model()
   #print(c)

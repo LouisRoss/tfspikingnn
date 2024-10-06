@@ -9,10 +9,11 @@ Inh2 = 11 + 28
 N1 = 15
 N2 = 15 + 28
 
-connspec = [['I1-N1',I1,N1], ['I2-N2',I2,N2],['N1-N2',N1,N2],['N2-N1',N2,N1],['N1-Inh1',N1,Inh1],['N2-Inh2',N2,Inh2],['Inh1-I1',Inh1,I1],['Inh2-I2',Inh2,I2]]
+connspec = [['I1-N1',I1,N1], ['I1-N2',I1,N2],['I2-N2',I2,N2],['N1-N2',N1,N2],['N2-N2',N2,N2], ['Inh1-N2',Inh1,N2], ['Inh2-N2',Inh2,N2],['N2-N1',N2,N1],['N1-Inh1',N1,Inh1],['N2-Inh2',N2,Inh2],['Inh1-I1',Inh1,I1],['Inh2-I2',Inh2,I2]]
 
 
-builder = ConnectionArrayBuilder('/record/simulation14/fullconnections.dat')
+simulationnumber = 26
+builder = ConnectionArrayBuilder('/media/internal/record/tfspikingnn/simulation' + str(simulationnumber) + '/fullconnections.dat')
 builder.Build(connspec, debug=False)
 linedata = builder.linedata
 """

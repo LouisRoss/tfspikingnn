@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from parselog import ArrayBuilder
 
-simulationnumber = 22
+simulationnumber = 29
 #builder = ArrayBuilder('/media/internal/record/tfspikingnn/simulation' + str(simulationnumber) + '/fullspike.dat')
 builder = ArrayBuilder('/media/internal/record/tfspikingnn/simulation' + str(simulationnumber) + '/fullactivations.dat')
 #builder = ArrayBuilder('/media/internal/record/tfspikingnn/simulation' + str(simulationnumber) + '/fullhebbtimers.dat')
