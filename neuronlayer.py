@@ -32,6 +32,14 @@ def MakeSimulationFolder(simulationNumber):
 
 
 class LayerModule(tf.Module):
+  """
+  This class extends the Tensorflow Module class, so that any methoc decorated
+  with the @tf.function notation will be compiled into a compute graph, on first
+  execution, and all subsequent iterations will run on the compute device.
+  The functor of this class implements a single tick of the spiking neural algorithm,
+  including learning.
+  """
+
   def __init__(self, configuration: NeuronConfiguration, init_loader: InitLoader, name=None):
     super().__init__(name=name)
     self.is_built = False
@@ -56,8 +64,6 @@ class LayerModule(tf.Module):
     self.hebbdelay = tf.constant(hebbdelay, dtype=tf.dtypes.int32)
     self.activehebbbase = tf.zeros([self.thickness, self.layer_size, self.layer_size], dtype=tf.dtypes.int32)
     self.connections = tf.Variable(self.init_loader.InitializeConnections(), name='connections', trainable=False)
-    #layer = self.InitializeConnections()
-    #self.connections = tf.Variable(layer, name='connections', trainable=False)
     self.delaytimes = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delaytimes', trainable=False)
     self.delayguards = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delayguards', trainable=False)
 
@@ -98,16 +104,14 @@ class LayerModule(tf.Module):
 
     # potential(j) += SUM(ij)[spike(i) @ connection(ij)]
     self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
-    #self.potentials.assign(self.spikes @ self.connections)
-    #self.potentials.assign(((self.spiketrain[self.tick] + self.spikes) @ self.connections) + self.decayedpotentials)
-    #self.tick.assign_add(1)
 
+    # Do learning while self.spikes contains the presynaptic spike pattern.
     self.HebbLearning()
 
-    # Spike if above threshold, but only if delaytime is exhausted.
-    #self.spikes.assign(tf.cast(tf.greater_equal(self.potentials, self.threshold), tf.int32))
+    # Spike if above threshold, but only if delaytime is exhausted.  This generates the post-synaptic spike pattern.
     self.spikes.assign(tf.cast(tf.greater_equal(tf.multiply(self.potentials, self.delayguards), self.threshold), tf.int32))
 
+    # Inject any spikes included in the incoming spike train.
     self.spikes.assign(tf.cast(tf.minimum(self.spikes + self.spiketrain[self.tick], 1), tf.int32))
     self.tick.assign_add(1)
 
@@ -131,40 +135,16 @@ class LayerModule(tf.Module):
     return self.spikes
   
 
-  def InitializeConnections(self):
-      #layer = tf.cast(tf.random.normal([self.thickness, self.layer_size, self.layer_size], mean=0.0, stddev=10.0), tf.dtypes.int32)
-      layer = np.zeros((self.thickness, self.layer_size, self.layer_size))
-      """
-      layer = np.random.randint(-25, high=25, size=(self.thickness, self.layer_size, self.layer_size))
-      for i in range(self.layer_size):
-        for j in range(self.layer_size):
-          layer[0][i][j] = 0
-          layer[1][i][j] = 0
-      """
-
-      I1 = 10
-      I2 = 10 + 28
-      Inh1 = 11
-      Inh2 = 11 + 28
-      N1 = 15
-      N2 = 15 + 28
-
-      for i in range(0, 20*28, 4*28):
-        layer[0][i+I1][i+N1] = self.threshold+1
-        layer[0][i+I2][i+N2] = self.threshold+1
-        layer[0][i+N1][i+N2] = 5
-        layer[0][i+N2][i+N1] = 5
-        layer[0][i+N1][i+Inh1] = self.threshold+1
-        layer[0][i+N2][i+Inh2] = self.threshold+1
-        layer[0][i+Inh1][I1] = -10
-        layer[0][i+Inh2][I2] = -10
-         
-
-      connspec = [['I1-N2',I1,N1], ['I2-N2',I2,N2],['N1-N2',N1,N2],['N2-N1',N2,N1],['N1-Inh1',N1,Inh1],['N2-Inh2',N2,Inh2],['Inh1-I1',Inh1,I1],['Inh2-I2',Inh2,I2]]
-      layer = tf.cast(layer, tf.dtypes.int32)
-      return layer
 
 class PopulationModule(tf.Module):
+  """
+  This class extends the Tensorflow Module class, so that any methoc decorated
+  with the @tf.function notation will be compiled into a compute graph, on first
+  execution, and all subsequent iterations will run on the compute device.
+  The functor of this class will call the worker class LayerModule the correct
+  number of times, as indicated by the configuration.
+  """
+
   def __init__(self, configuration: NeuronConfiguration, init_loader: InitLoader, name=None):
     super().__init__(name=name)
 
@@ -176,33 +156,20 @@ class PopulationModule(tf.Module):
     thickness = self.configuration.GetThickness()
     self.thickness = tf.constant(thickness)
 
-    thicks = []
-    for pop in range(self.layer_size):
-      thicks.append(f'file://data/population{pop}.csv')
-    self.thickname = tf.Variable(thicks, dtype=tf.dtypes.string, name='populationnames', trainable=False)
-
-    spiketrain = tf.Variable(self.init_loader.GenerateSpikes(self.iterations), trainable=False)
     self.population = LayerModule(configuration=self.configuration, init_loader=self.init_loader, name="population")
+
+    # This Tensorflow variable may not be necessary, but seems to be required to ensure that calls to self.population
+    # are included in the compute graph.  TBD
     self.spikevalues = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), trainable=False)
 
-  def GenerateSpikes(self):
-    initialspikes = np.zeros((self.iterations, self.thickness, 1, self.layer_size), dtype=np.int32)
-
-    I1 = 10
-    I2 = 10 + 28
-    
-    for tick in range(0, self.iterations, 20):
-      for i in range(0, 20*28, 4*28):
-        initialspikes[tick, 0, 0, i+I1] = 1
-        #initialspikes[tick+1, 0, 0, i+I1] = 1
-        initialspikes[tick+5, 0, 0, i+I2] = 1
-        #initialspikes[tick+6, 0, 0, i+I2] = 1
-    
-
-    return tf.Variable(tf.cast(initialspikes, tf.dtypes.int32), trainable=False)
 
   @tf.function
   def __call__(self, datafolder, log=False):
+    """
+    Functor that turns an instance of this class into a callable function.  Since it is decorated
+    with the Tensorflow @tf.function notation, the code here plus methods it calls will be compiled
+    into a compute graph on first execution.
+    """
     if log:
         tf.print(self.population.connections, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullconnections.dat')
 
@@ -242,6 +209,9 @@ def TracePopulationModel():
 
 
 def Run(configuration: NeuronConfiguration):
+  """
+  Run the simulation described by the given configuration.
+  """
   #tf.debugging.set_log_device_placement(True)
 
   simulationNumber = GetNextSimulationNumber()
@@ -275,33 +245,35 @@ def Run(configuration: NeuronConfiguration):
     prep.BuildActivations()
     prep.BuildHebbianTimers()
 
-if len(sys.argv) < 2:
-  print(f'Usage: {sys.argv[0]} <configuration> [initializer number] [iterations] [layersize] [thickness]')
-  exit(0)
-
-configuration = NeuronConfiguration(sys.argv[1])
-if not configuration.valid:
-  print(f'Configuration {sys.argv[1]} is not valid')
-  exit(0)
-
-if len(sys.argv) > 2:
-  initializer = int(sys.argv[2])
-  if initializer >= len(configuration.GetInitializers()):
-    print(f'Initializer {initializer} is bigger than allowed by configuration {sys.argv[1]}, which has {len(configuration.GetInitializers())} initializers')
+# Execution starts here.
+if __name__ == "__main__":
+  if len(sys.argv) < 2:
+    print(f'Usage: {sys.argv[0]} <configuration> [initializer number] [iterations] [layersize] [thickness]')
     exit(0)
 
-  configuration.SetSelectedInitializer(initializer)
+  configuration = NeuronConfiguration(sys.argv[1])
+  if not configuration.valid:
+    print(f'Configuration {sys.argv[1]} is not valid')
+    exit(0)
 
-if len(sys.argv) > 3:
-  configuration.SetIterationCount(int(sys.argv[3]))
+  if len(sys.argv) > 2:
+    initializer = int(sys.argv[2])
+    if initializer >= len(configuration.GetInitializers()):
+      print(f'Initializer {initializer} is bigger than allowed by configuration {sys.argv[1]}, which has {len(configuration.GetInitializers())} initializers')
+      exit(0)
 
-if len(sys.argv) > 4:
-  configuration.SetIterationCount(int(sys.argv[4]))
+    configuration.SetSelectedInitializer(initializer)
 
-if len(sys.argv) > 5:
-  configuration.SetLayerSize(int(sys.argv[5]))
+  if len(sys.argv) > 3:
+    configuration.SetIterationCount(int(sys.argv[3]))
 
-if len(sys.argv) > 6:
-  configuration.SetThickness(int(sys.argv[6]))
+  if len(sys.argv) > 4:
+    configuration.SetIterationCount(int(sys.argv[4]))
 
-Run(configuration)
+  if len(sys.argv) > 5:
+    configuration.SetLayerSize(int(sys.argv[5]))
+
+  if len(sys.argv) > 6:
+    configuration.SetThickness(int(sys.argv[6]))
+
+  Run(configuration)

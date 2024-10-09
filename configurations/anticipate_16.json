@@ -1,8 +1,8 @@
 {
-    "name": "Anticipate 16 x 2",
+    "name": "Anticipate 64 x 784",
     "iterationCount": 1000,
-    "layerSize": 16,
-    "thickness": 2,
+    "layerSize": 64,
+    "thickness": 784,
     "threshold": 12,
     "selectedInitializer": 0,
     "initializers": [

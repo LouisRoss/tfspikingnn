@@ -68,7 +68,6 @@ class Initializer:
       for population in range(self.thickness):
         for instance in range(0, self.yedgesize, 3):
           if instance+1 < self.yedgesize:
-            print(f'Populating tick {tick}, population {population}, instance {instance}')
             offset = instance * self.xedgesize
 
             initialspikes[tick, population, 0, offset+self.I1] = 1
