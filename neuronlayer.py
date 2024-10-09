@@ -1,5 +1,8 @@
 import re
 import os
+import sys
+from neuronconfiguration import NeuronConfiguration
+from initloader import InitLoader
 import tensorflow as tf
 import numpy as np
 from datetime import datetime
@@ -15,7 +18,9 @@ def GetNextSimulationNumber():
   obj = os.scandir(path)
   for entry in obj:
     if entry.is_dir():
-      sims.append(int(re.split(fileparse, entry.name)[2]))
+      parts = re.split(fileparse, entry.name)
+      if parts[1] == 'simulation':
+        sims.append(int(parts[2]))
 
   return max(sims) + 1
 
@@ -27,14 +32,20 @@ def MakeSimulationFolder(simulationNumber):
 
 
 class LayerModule(tf.Module):
-  def __init__(self, layer_size, thickness, spiketrain, name=None):
+  def __init__(self, configuration: NeuronConfiguration, init_loader: InitLoader, name=None):
     super().__init__(name=name)
     self.is_built = False
-    self.layer_size = layer_size
-    self.thickness = thickness
+
+    self.configuration = configuration
+    self.init_loader = init_loader
+
+    self.iterations = self.configuration.GetIterationCount()
+    self.layer_size = self.configuration.GetLayerSize()
+    self.thickness = self.configuration.GetThickness()
+    spiketrain = tf.Variable(self.init_loader.GenerateSpikes(self.iterations), trainable=False)
     self.spiketrain = spiketrain
     self.tick = tf.Variable(0)
-    self.tflayer_size = tf.constant(layer_size, dtype=tf.int32)
+    self.tflayer_size = tf.constant(self.layer_size, dtype=tf.int32)
     factor = np.ones([self.thickness, 1, self.layer_size], dtype=np.int32)
     factor = factor * 2
     self.factor = tf.constant(factor, dtype=tf.dtypes.int32)
@@ -44,8 +55,9 @@ class LayerModule(tf.Module):
     hebbdelay = hebbdelay * 7
     self.hebbdelay = tf.constant(hebbdelay, dtype=tf.dtypes.int32)
     self.activehebbbase = tf.zeros([self.thickness, self.layer_size, self.layer_size], dtype=tf.dtypes.int32)
-    layer = self.InitializeConnections()
-    self.connections = tf.Variable(layer, name='connections', trainable=False)
+    self.connections = tf.Variable(self.init_loader.InitializeConnections(), name='connections', trainable=False)
+    #layer = self.InitializeConnections()
+    #self.connections = tf.Variable(layer, name='connections', trainable=False)
     self.delaytimes = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delaytimes', trainable=False)
     self.delayguards = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delayguards', trainable=False)
 
@@ -111,7 +123,7 @@ class LayerModule(tf.Module):
     self.delaytimes.assign(tf.cast(tf.maximum(tf.subtract(self.delaytimes, 1), 0), tf.int32))
 
     if log:
-      tf.print(self.connections, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullconnections.dat')
+      #tf.print(self.connections, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullconnections.dat')
       tf.print(self.spikes, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullspike.dat')
       tf.print(self.potentials, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullactivations.dat')
       tf.print(self.hebbtimers, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullhebbtimers.dat')
@@ -153,28 +165,33 @@ class LayerModule(tf.Module):
       return layer
 
 class PopulationModule(tf.Module):
-  def __init__(self, layer_size, iterations, thickness=1, name=None):
+  def __init__(self, configuration: NeuronConfiguration, init_loader: InitLoader, name=None):
     super().__init__(name=name)
-    self.duration = 1000
-    self.layer_size = layer_size
+
+    self.configuration = configuration
+    self.init_loader = init_loader
+    self.layer_size = self.configuration.GetLayerSize()
+    iterations = self.configuration.GetIterationCount()
     self.iterations = tf.constant(iterations)
+    thickness = self.configuration.GetThickness()
     self.thickness = tf.constant(thickness)
+
     thicks = []
-    for pop in range(layer_size):
+    for pop in range(self.layer_size):
       thicks.append(f'file://data/population{pop}.csv')
     self.thickname = tf.Variable(thicks, dtype=tf.dtypes.string, name='populationnames', trainable=False)
 
-    spiketrain = self.GenerateSpikes()
-    self.population = LayerModule(layer_size=self.layer_size, thickness=self.thickness, spiketrain=spiketrain, name="population")
+    spiketrain = tf.Variable(self.init_loader.GenerateSpikes(self.iterations), trainable=False)
+    self.population = LayerModule(configuration=self.configuration, init_loader=self.init_loader, name="population")
     self.spikevalues = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), trainable=False)
 
   def GenerateSpikes(self):
-    initialspikes = np.zeros((self.duration, self.thickness, 1, self.layer_size), dtype=np.int32)
+    initialspikes = np.zeros((self.iterations, self.thickness, 1, self.layer_size), dtype=np.int32)
 
     I1 = 10
     I2 = 10 + 28
     
-    for tick in range(0, self.duration, 20):
+    for tick in range(0, self.iterations, 20):
       for i in range(0, 20*28, 4*28):
         initialspikes[tick, 0, 0, i+I1] = 1
         #initialspikes[tick+1, 0, 0, i+I1] = 1
@@ -223,14 +240,25 @@ def TracePopulationModel():
         step=0,
         profiler_outdir=logdir)
 
-def Run():
+
+def Run(configuration: NeuronConfiguration):
   #tf.debugging.set_log_device_placement(True)
 
   simulationNumber = GetNextSimulationNumber()
   datafolder = MakeSimulationFolder(simulationNumber) + '/'
 
-  iterationCount = 1000
-  population_model = PopulationModule(layer_size=784, iterations=iterationCount, thickness=32, name="populations")
+  layerSize = configuration.GetLayerSize()
+  thickness = configuration.GetThickness()
+  iterationCount = configuration.GetIterationCount()
+
+  print(f'Running simulation {simulationNumber} with layer size {layerSize}, thickness {thickness}, iteration count {iterationCount}')
+
+  initializers = configuration.GetInitializers()
+  selected_initializer = configuration.GetSelectedInitializer()
+  print(f'Initializers are {initializers}, using initializer {selected_initializer}')
+  init_loader = InitLoader(initializers[selected_initializer], configuration)
+
+  population_model = PopulationModule(configuration, init_loader, name="populations")
   #c = population_model()
   #print(c)
   #tf.debugging.set_log_device_placement(False)
@@ -247,4 +275,33 @@ def Run():
     prep.BuildActivations()
     prep.BuildHebbianTimers()
 
-Run()
+if len(sys.argv) < 2:
+  print(f'Usage: {sys.argv[0]} <configuration> [initializer number] [iterations] [layersize] [thickness]')
+  exit(0)
+
+configuration = NeuronConfiguration(sys.argv[1])
+if not configuration.valid:
+  print(f'Configuration {sys.argv[1]} is not valid')
+  exit(0)
+
+if len(sys.argv) > 2:
+  initializer = int(sys.argv[2])
+  if initializer >= len(configuration.GetInitializers()):
+    print(f'Initializer {initializer} is bigger than allowed by configuration {sys.argv[1]}, which has {len(configuration.GetInitializers())} initializers')
+    exit(0)
+
+  configuration.SetSelectedInitializer(initializer)
+
+if len(sys.argv) > 3:
+  configuration.SetIterationCount(int(sys.argv[3]))
+
+if len(sys.argv) > 4:
+  configuration.SetIterationCount(int(sys.argv[4]))
+
+if len(sys.argv) > 5:
+  configuration.SetLayerSize(int(sys.argv[5]))
+
+if len(sys.argv) > 6:
+  configuration.SetThickness(int(sys.argv[6]))
+
+Run(configuration)

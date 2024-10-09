@@ -1,0 +1,11 @@
+{
+    "name": "Anticipate 784 x 32",
+    "iterationCount": 1000,
+    "layerSize": 784,
+    "thickness": 32,
+    "threshold": 12,
+    "selectedInitializer": 0,
+    "initializers": [
+        "anticipate-initializer"
+    ]
+}

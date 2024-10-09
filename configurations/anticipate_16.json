@@ -1,0 +1,11 @@
+{
+    "name": "Anticipate 16 x 2",
+    "iterationCount": 1000,
+    "layerSize": 16,
+    "thickness": 2,
+    "threshold": 12,
+    "selectedInitializer": 0,
+    "initializers": [
+        "anticipate-initializer"
+    ]
+}
