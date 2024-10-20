@@ -23,6 +23,8 @@ class NeuronConfiguration:
         self.layer_size = None
         self.thickness = None
         self.threshold = None
+        self.interconnectCount = None
+        self.outputwidth = None
         self.selected_initializer = None
 
     def GetName(self) -> str:
@@ -81,6 +83,30 @@ class NeuronConfiguration:
     
     def SetThreshold(self, threshold: int):
         self.threshold = threshold
+
+    def GetInterconnectCount(self) -> int:
+        if not self.interconnectCount:
+            if self.valid and 'interconnectCount' in self.configuration:
+                self.interconnectCount = self.configuration['interconnectCount']
+            else:
+                self.interconnectCount = 0
+        
+        return self.interconnectCount
+    
+    def SetInterconnectCount(self, interconnectCount: int):
+        self.interconnectCount = interconnectCount
+
+    def GetOutputWidth(self) -> int:
+        if not self.outputwidth:
+            if self.valid and 'outputWidth' in self.configuration:
+                self.outputwidth = self.configuration['outputWidth']
+            else:
+                self.outputwidth = 0
+        
+        return self.outputwidth
+    
+    def SetOutputWidth(self, outputwidth: int):
+        self.outputwidth = outputwidth
 
     def GetSelectedInitializer(self) -> int:
         if not self.selected_initializer:

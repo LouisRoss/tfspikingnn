@@ -4,8 +4,10 @@
     "layerSize": 784,
     "thickness": 32,
     "threshold": 12,
+    "interconnectCount": 4,
+    "outputWidth": 2,
     "selectedInitializer": 0,
     "initializers": [
-        "anticipate-initializer"
+        "anticipate_initializer"
     ]
 }

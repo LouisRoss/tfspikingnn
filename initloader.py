@@ -4,6 +4,9 @@ class InitLoader:
         MakeInitializer = getattr(self.module, 'MakeInitializer')
         self.init_class = MakeInitializer(configuration)
 
+    def InitializeInterconnects(self):
+        return self.init_class.InitializeInterconnects()
+
     def InitializeConnections(self):
         return self.init_class.InitializeConnections()
 

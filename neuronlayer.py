@@ -33,7 +33,7 @@ def MakeSimulationFolder(simulationNumber):
 
 class LayerModule(tf.Module):
   """
-  This class extends the Tensorflow Module class, so that any methoc decorated
+  This class extends the Tensorflow Module class, so that any method decorated
   with the @tf.function notation will be compiled into a compute graph, on first
   execution, and all subsequent iterations will run on the compute device.
   The functor of this class implements a single tick of the spiking neural algorithm,
@@ -50,6 +50,10 @@ class LayerModule(tf.Module):
     self.iterations = self.configuration.GetIterationCount()
     self.layer_size = self.configuration.GetLayerSize()
     self.thickness = self.configuration.GetThickness()
+    self.outputwidth = self.configuration.GetOutputWidth()
+    self.interconnectCount = configuration.GetInterconnectCount()
+    self.inputwidth = self.outputwidth * self.interconnectCount
+    self.interconnectpad = tf.zeros((self.thickness, 1, self.layer_size-self.inputwidth), dtype=tf.int32)
     spiketrain = tf.Variable(self.init_loader.GenerateSpikes(self.iterations), trainable=False)
     self.spiketrain = spiketrain
     self.tick = tf.Variable(0)
@@ -64,8 +68,16 @@ class LayerModule(tf.Module):
     self.hebbdelay = tf.constant(hebbdelay, dtype=tf.dtypes.int32)
     self.activehebbbase = tf.zeros([self.thickness, self.layer_size, self.layer_size], dtype=tf.dtypes.int32)
     self.connections = tf.Variable(self.init_loader.InitializeConnections(), name='connections', trainable=False)
+    self.interconnects = tf.constant(self.init_loader.InitializeInterconnects(), name='interconnects')
     self.delaytimes = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delaytimes', trainable=False)
     self.delayguards = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delayguards', trainable=False)
+
+  def Interconnect(self):
+    sout = tf.slice(self.spikes, begin=[0, 0, 0], size=[self.thickness, 1, self.outputwidth])
+    sin = tf.reshape(tf.gather_nd(indices=self.interconnects, params=sout), [self.thickness, 1, self.inputwidth])
+    interconnect_spikes = tf.concat([sin, self.interconnectpad], axis=2)
+    #tf.concat([tf.gather_nd(sout, indices=[[0],[2],[1],[3]]), pad], axis=2)
+    return interconnect_spikes
 
   def HebbLearning(self):
     # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
@@ -111,8 +123,8 @@ class LayerModule(tf.Module):
     # Spike if above threshold, but only if delaytime is exhausted.  This generates the post-synaptic spike pattern.
     self.spikes.assign(tf.cast(tf.greater_equal(tf.multiply(self.potentials, self.delayguards), self.threshold), tf.int32))
 
-    # Inject any spikes included in the incoming spike train.
-    self.spikes.assign(tf.cast(tf.minimum(self.spikes + self.spiketrain[self.tick], 1), tf.int32))
+    # Inject any spikes included in the incoming spike train plus interconnects.
+    self.spikes.assign(tf.cast(tf.minimum(self.spikes + self.spiketrain[self.tick] + self.Interconnect(), 1), tf.int32))
     self.tick.assign_add(1)
 
     # delaytime(i) = delaytime(i) + 8 if spike(i) else delaytime(i)
