@@ -27,6 +27,11 @@ class NeuronConfiguration:
         self.outputwidth = None
         self.selected_initializer = None
 
+    def Save(self, datafolder):
+        if os.path.exists(datafolder):
+            with open(datafolder + '/configuration.json', 'w') as configfile:
+                json.dump(self.configuration, configfile)
+
     def GetName(self) -> str:
         if not self.name:
             self.name = self.configuration['name']

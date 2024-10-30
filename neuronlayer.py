@@ -73,9 +73,18 @@ class LayerModule(tf.Module):
     self.delayguards = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delayguards', trainable=False)
 
   def Interconnect(self):
+    """ Each population has an entry in self.interconnects that describes the populations whose outputs feed into its inputs.
+        Outputs are collected from the first self.outputwidth cells of each interconnecting population (0 - self.outputwidth-1), 
+        and stacked in the order specified by self.interconnects.  
+
+        Example: if self.outputwidth = 2 and population 20 has populations 19 and 21 
+        (in that order) listed in self.interconnects, then the current spiking values of [19(0), 19(1), 21(0), 21(1)]
+        will be stacked in that order and the resulting four spike values will be injected into the last four cells of population
+        20: [20(-4), 20(-3), 20(-2), 20(-1)].
+    """
     sout = tf.slice(self.spikes, begin=[0, 0, 0], size=[self.thickness, 1, self.outputwidth])
     sin = tf.reshape(tf.gather_nd(indices=self.interconnects, params=sout), [self.thickness, 1, self.inputwidth])
-    interconnect_spikes = tf.concat([sin, self.interconnectpad], axis=2)
+    interconnect_spikes = tf.concat([self.interconnectpad, sin], axis=2)
     #tf.concat([tf.gather_nd(sout, indices=[[0],[2],[1],[3]]), pad], axis=2)
     return interconnect_spikes
 
@@ -228,6 +237,7 @@ def Run(configuration: NeuronConfiguration):
 
   simulationNumber = GetNextSimulationNumber()
   datafolder = MakeSimulationFolder(simulationNumber) + '/'
+  configuration.Save(datafolder)
 
   layerSize = configuration.GetLayerSize()
   thickness = configuration.GetThickness()
