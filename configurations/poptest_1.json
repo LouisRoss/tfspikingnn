@@ -4,7 +4,7 @@
     "layerSize": 64,
     "thickness": 784,
     "threshold": 12,
-    "interconnectCount": 1,
+    "interconnectCount": 4,
     "outputWidth": 2,
     "selectedInitializer": 0,
     "initializers": [
