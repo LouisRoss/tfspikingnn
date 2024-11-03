@@ -88,6 +88,18 @@ class LayerModule(tf.Module):
     #tf.concat([tf.gather_nd(sout, indices=[[0],[2],[1],[3]]), pad], axis=2)
     return interconnect_spikes
 
+  def HebbLearningConnect(self):
+    # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
+    activehebb = (self.activehebbbase + tf.minimum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning)) * self.spikes
+
+    # Add resulting columns container hebbtimers to existing connections, capping any connection at the spike threshold.
+    # Remember to exclude any connections that are not already above zero.
+    activehebb = tf.multiply(tf.cast(tf.greater_equal(self.connections, 0), tf.int32), activehebb)
+    self.connections.assign(tf.cast(tf.minimum(self.connections + activehebb, self.threshold), tf.int32))
+
+    self.hebbtimers.assign_add((self.spikes * self.hebbdelay))
+    self.hebbtimers.assign(tf.cast(tf.maximum(tf.subtract(self.hebbtimers, 1), 0), tf.int32))
+
   def HebbLearning(self):
     # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
     activehebb = (self.activehebbbase + tf.minimum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning)) * self.spikes
@@ -127,7 +139,7 @@ class LayerModule(tf.Module):
     self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
 
     # Do learning while self.spikes contains the presynaptic spike pattern.
-    self.HebbLearning()
+    self.HebbLearningConnect()
 
     # Spike if above threshold, but only if delaytime is exhausted.  This generates the post-synaptic spike pattern.
     self.spikes.assign(tf.cast(tf.greater_equal(tf.multiply(self.potentials, self.delayguards), self.threshold), tf.int32))
@@ -159,7 +171,7 @@ class LayerModule(tf.Module):
 
 class PopulationModule(tf.Module):
   """
-  This class extends the Tensorflow Module class, so that any methoc decorated
+  This class extends the Tensorflow Module class, so that any method decorated
   with the @tf.function notation will be compiled into a compute graph, on first
   execution, and all subsequent iterations will run on the compute device.
   The functor of this class will call the worker class LayerModule the correct
