@@ -1,6 +1,6 @@
 {
     "name": "Sequence 64 x 784",
-    "iterationCount": 100,
+    "iterationCount": 1000,
     "layerSize": 64,
     "thickness": 784,
     "threshold": 12,

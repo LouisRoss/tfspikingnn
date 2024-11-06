@@ -106,10 +106,11 @@ class Initializer:
 
     for population in range(self.thickness):
       for ycell in range(2, self.yedgesize-2):
+        out_cell = ycell*self.xedgesize + self.yedgesize - 1
         for xcell in range(self.xedgesize-2):
             from_cell = ycell*self.xedgesize + xcell
             layer[population][from_cell][from_cell+1] = self.threshold+1
-
+            layer[population][from_cell][out_cell] = 1
 
     return layer
 
@@ -120,7 +121,7 @@ class Initializer:
     print(f'Creating tensor with duration {duration}, thickness {self.thickness}, layer size {self.layer_size}')
     initialspikes = np.zeros((duration, self.thickness, 1, self.layer_size), dtype=np.int32)
 
-    for tick in range(0, duration, 20):
+    for tick in range(0, duration, 40):
       for population in range(self.thickness):
         epoch_tick = tick
         # Spike each input cell in sequence
@@ -131,8 +132,17 @@ class Initializer:
 
         # At the end of the sequence, spike all the output cells.
         for ycell in range(2, self.yedgesize-2):
-            spike_cell = ycell*self.xedgesize + self.xedgesize - 1
+            out_cell = ycell*self.xedgesize + self.xedgesize - 1
+            initialspikes[epoch_tick, population, 0, out_cell] = 1
+
+    for tick in range(20, duration, 40):
+      for population in range(self.thickness):
+        epoch_tick = tick
+        # Spike each input cell in sequence
+        for ycell in range(self.yedgesize-3, 1, -1):
+            spike_cell = ycell*self.xedgesize + 0
             initialspikes[epoch_tick, population, 0, spike_cell] = 1
+            epoch_tick += 1
 
     return initialspikes
 

@@ -47,7 +47,7 @@ connspec = [['I1_1-O1',I1_1,O1], ['I1_2-O1',I1_2,O1], ['I1_3-O1',I1_3,O1], ['I1_
             ['I1_1-I1_7',I1_1,I1_7], ['I1_2-I1_7',I1_2,I1_7], ['I1_3-I1_7',I1_3,I1_7], ['I1_4-I1_7',I1_4,I1_7], ['I1_5-I1_7',I1_5,I1_7], ['I1_6-I1_7',I1_6,I1_7], ['O1-I1_7',O1,I1_7]]
 
 
-simulationnumber = 6
+simulationnumber = 12
 builder = ConnectionArrayBuilder('/media/internal/record/tfspikingnn/simulation' + str(simulationnumber) + '/fullconnections.dat')
 builder.Build(connspec, debug=False)
 linedata = builder.linedata

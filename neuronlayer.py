@@ -139,7 +139,7 @@ class LayerModule(tf.Module):
     self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
 
     # Do learning while self.spikes contains the presynaptic spike pattern.
-    self.HebbLearningConnect()
+    self.HebbLearning()
 
     # Spike if above threshold, but only if delaytime is exhausted.  This generates the post-synaptic spike pattern.
     self.spikes.assign(tf.cast(tf.greater_equal(tf.multiply(self.potentials, self.delayguards), self.threshold), tf.int32))
