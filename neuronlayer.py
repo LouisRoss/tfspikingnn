@@ -68,9 +68,14 @@ class LayerModule(tf.Module):
     self.hebbdelay = tf.constant(hebbdelay, dtype=tf.dtypes.int32)
     self.activehebbbase = tf.zeros([self.thickness, self.layer_size, self.layer_size], dtype=tf.dtypes.int32)
     self.connections = tf.Variable(self.init_loader.InitializeConnections(), name='connections', trainable=False)
+    self.connection_delays = tf.Variable(tf.ones((self.thickness, self.layer_size, self.layer_size), dtype=tf.int32), name='connection_delays', trainable=False)
+    self.connection_timers = tf.Variable(tf.zeros((self.thickness, self.layer_size, self.layer_size), dtype=tf.int32), name='connection_timers', trainable=False)
+    self.connection_post_timers = tf.Variable(tf.zeros((self.thickness, self.layer_size, self.layer_size), dtype=tf.int32), name='connection_post_timers', trainable=False)
+    self.post_time_delay = tf.constant(25)
+
     self.interconnects = tf.constant(self.init_loader.InitializeInterconnects(), name='interconnects')
     self.delaytimes = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delaytimes', trainable=False)
-    self.delayguards = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delayguards', trainable=False)
+    self.delayguards = tf.Variable(tf.ones([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='delayguards', trainable=False)
 
   def Interconnect(self):
     """ Each population has an entry in self.interconnects that describes the populations whose outputs feed into its inputs.
@@ -87,6 +92,18 @@ class LayerModule(tf.Module):
     interconnect_spikes = tf.concat([self.interconnectpad, sin], axis=2)
     #tf.concat([tf.gather_nd(sout, indices=[[0],[2],[1],[3]]), pad], axis=2)
     return interconnect_spikes
+
+  def DelayConnect(self):
+    activedelays = (self.activehebbbase + tf.transpose(self.spikes, perm=[0,2,1])) * self.connection_delays
+    self.connection_timers.assign_add(activedelays)
+    triggeredtimers = tf.cast(tf.equal(self.connection_timers, 1), tf.int32)
+    activeconnections = triggeredtimers * self.connections
+    self.potentials.assign((self.dummyspikes @ activeconnections) + self.decayedpotentials)
+    self.connection_timers.assign(tf.maximum(self.connection_timers - 1, 0))
+
+    activeconnectionmask = tf.cast(tf.greater(activeconnections, 0), tf.int32)
+    self.connection_post_timers.assign_add(activeconnectionmask * self.post_time_delay)
+    self.connection_post_timers.assign(tf.maximum(self.connection_post_timers - 1, 0))
 
   def HebbLearningConnect(self):
     # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
@@ -131,12 +148,14 @@ class LayerModule(tf.Module):
       self.hebbtimers = tf.Variable(tf.zeros([self.thickness, 1, self.layer_size], dtype=tf.dtypes.int32), dtype=tf.dtypes.int32, name='hebbtimers', trainable=False)
       initialspikes = np.zeros((self.thickness, 1, self.layer_size), dtype=np.int32)
       self.spikes = tf.Variable(tf.cast(initialspikes, tf.dtypes.int32), trainable=False)
+      self.dummyspikes = tf.Variable(tf.ones([self.thickness, 1, self.layer_size], dtype=tf.int32), name='dummy_spikes', trainable=False)
 
       self.is_built = True
 
 
     # potential(j) += SUM(ij)[spike(i) @ connection(ij)]
-    self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
+    self.DelayConnect()
+    #self.potentials.assign((self.spikes @ self.connections) + self.decayedpotentials)
 
     # Do learning while self.spikes contains the presynaptic spike pattern.
     self.HebbLearning()
