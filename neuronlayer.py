@@ -68,7 +68,7 @@ class LayerModule(tf.Module):
     self.hebbdelay = tf.constant(hebbdelay, dtype=tf.dtypes.int32)
     self.activehebbbase = tf.zeros([self.thickness, self.layer_size, self.layer_size], dtype=tf.dtypes.int32)
     self.connections = tf.Variable(self.init_loader.InitializeConnections(), name='connections', trainable=False)
-    self.connection_delays = tf.Variable(tf.ones((self.thickness, self.layer_size, self.layer_size), dtype=tf.int32), name='connection_delays', trainable=False)
+    self.connection_delays = tf.Variable(self.init_loader.InitializeConnectionDelays(), name='connection_delays', trainable=False)
     self.connection_timers = tf.Variable(tf.zeros((self.thickness, self.layer_size, self.layer_size), dtype=tf.int32), name='connection_timers', trainable=False)
     self.connection_post_timers = tf.Variable(tf.zeros((self.thickness, self.layer_size, self.layer_size), dtype=tf.int32), name='connection_post_timers', trainable=False)
     self.post_time_delay = tf.constant(25)

@@ -87,6 +87,11 @@ class Initializer:
     return connections
 
 
+  def InitializeConnectionDelays(self):
+    delays = np.ones((self.thickness, self.layer_size, self.layer_size), dtype=np.int32)
+
+    return delays
+  
 
   def InitializeConnections(self):
     #layer = tf.cast(tf.random.normal([self.thickness, self.layer_size, self.layer_size], mean=0.0, stddev=10.0), tf.dtypes.int32)

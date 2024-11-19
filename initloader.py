@@ -7,6 +7,9 @@ class InitLoader:
     def InitializeInterconnects(self):
         return self.init_class.InitializeInterconnects()
 
+    def InitializeConnectionDelays(self):
+        return self.init_class.InitializeConnectionDelays()
+
     def InitializeConnections(self):
         return self.init_class.InitializeConnections()
 

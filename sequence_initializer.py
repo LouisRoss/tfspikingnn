@@ -97,6 +97,12 @@ class Initializer:
     return connections
 
 
+  def InitializeConnectionDelays(self):
+    delays = np.ones((self.thickness, self.layer_size, self.layer_size), dtype=np.int32)
+    delays = delays * 2
+
+    return delays
+  
 
   def InitializeConnections(self):
     """ Set the internal connections between neurons in each of the single populations.
