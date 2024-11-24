@@ -11,7 +11,7 @@ interconnect_patterns = {
 
 class Initializer(BaseInitializer):
   def __init__(self, configuration):
-    super().__init__(configuration)
+    super().__init(configuration)
 
     self.base = 2 * self.xedgesize
     self.Out1 = 0

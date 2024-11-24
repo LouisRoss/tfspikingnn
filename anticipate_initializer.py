@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from base_initializer import BaseInitializer
 
 interconnect_patterns = {
   4: [[-1,0],[0,-1],[1,0],[0,1]],
@@ -7,8 +8,10 @@ interconnect_patterns = {
   12:[[-1,-1],[-1,0],[-1,1],[0,1],[1,1],[1,0],[1,-1],[0,-1],[-2,0],[0,-2],[2,0],[0,2]]
 }
 
-class Initializer:
+class Initializer(BaseInitializer):
   def __init__(self, configuration):
+    super().__init__(configuration)
+
     self.thickness = configuration.GetThickness()
     self.layer_size = configuration.GetLayerSize()
     self.threshold = configuration.GetThreshold()
@@ -28,26 +31,6 @@ class Initializer:
     self.N1 = self.xedgesize - 1 + base1
     self.N2 = self.xedgesize - 1 + base2
 
-
-  def GenerateSizes(self):
-    edgesize = int(math.sqrt(self.layer_size))
-    xedgesize = edgesize
-    yedgesize = edgesize
-    # If not a perfect square, use the smallest rectangle that fully contains all cells.
-    while xedgesize * yedgesize < self.layer_size:
-      yedgesize += 1
-
-    return (xedgesize, yedgesize)
-
-  def GenerateThicknesses(self):
-    edgesize = int(math.sqrt(self.thickness))
-    xedgesize = edgesize
-    yedgesize = edgesize
-    # If not a perfect square, use the largest rectangle where all rows are full.
-    while xedgesize * (yedgesize+1) < self.thickness:
-      yedgesize += 1
-
-    return (xedgesize, yedgesize)
 
   def InitializeInterconnects(self):
     pattern = []
@@ -88,21 +71,13 @@ class Initializer:
 
 
   def InitializeConnectionDelays(self):
-    delays = np.ones((self.thickness, self.layer_size, self.layer_size), dtype=np.int32)
+    delays = super().InitializeConnectionDelays()
 
     return delays
   
 
   def InitializeConnections(self):
-    #layer = tf.cast(tf.random.normal([self.thickness, self.layer_size, self.layer_size], mean=0.0, stddev=10.0), tf.dtypes.int32)
-    layer = np.zeros((self.thickness, self.layer_size, self.layer_size), dtype=np.int32)
-    """
-    layer = np.random.randint(-25, high=25, size=(self.thickness, self.layer_size, self.layer_size))
-    for i in range(self.layer_size):
-      for j in range(self.layer_size):
-        layer[0][i][j] = 0
-        layer[1][i][j] = 0
-    """
+    layer = super().InitialzieConnections()
 
     for population in range(self.thickness):
       for instance in range(0, self.yedgesize, 3):
@@ -121,10 +96,7 @@ class Initializer:
     return layer
 
   def GenerateSpikes(self, duration):
-    print(f'Using X edge size {self.xedgesize}, Y edge size {self.yedgesize}')
-
-    print(f'Creating tensor with duration {duration}, thickness {self.thickness}, layer size {self.layer_size}')
-    initialspikes = np.zeros((duration, self.thickness, 1, self.layer_size), dtype=np.int32)
+    initialspikes = super().GenerateSpikes()
 
     for tick in range(0, duration, 20):
       for population in range(self.thickness):
