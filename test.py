@@ -95,12 +95,17 @@ class Test(tf.Module):
     self.connection_timers.assign_add(activedelays)
     triggeredtimers = tf.cast(tf.equal(self.connection_timers, 1), tf.int32)
     activeconnections = triggeredtimers * self.connections
-    self.potentials.assign((self.dummyspikes @ activeconnections) + self.decayedpotentials)
+    activepotentials = self.dummyspikes @ activeconnections
+    self.potentials.assign(activepotentials + self.decayedpotentials)
     self.connection_timers.assign(tf.maximum(self.connection_timers - 1, 0))
-
     activeconnectionmask = tf.cast(tf.greater(activeconnections, 0), tf.int32)
     self.connection_post_timers.assign_add(activeconnectionmask * self.post_time_delay)
     self.connection_post_timers.assign(tf.maximum(self.connection_post_timers - 1, 0))
+
+    active_postsynaptic = tf.cast(tf.greater(activepotentials, 0), tf.int32)
+    delay_correction = (self.activehebbbase + self.post_time_delay) * activeconnectionmask
+    self.connection_delays.assign_add(delay_correction - ((self.activehebbbase + active_postsynaptic) * self.connection_post_timers))
+    #self.connection_delays.assign_add(triggeredtimers * self.connection_post_timers)
 
   @tf.function
   def HebbLearning(self):

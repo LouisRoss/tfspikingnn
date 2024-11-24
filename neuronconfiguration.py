@@ -5,19 +5,29 @@ path = '/record/'
 basefoldername = 'configurations'
 
 class NeuronConfiguration:
-    def __init__(self, config_name):
-        self.config_name = config_name
-        if not self.config_name.endswith(".json"):
-            self.config_name += ".json"
+    def __init__(self, config_name, configuration=None):
+        if configuration is None:
+            self.config_name = config_name
+            if not self.config_name.endswith(".json"):
+                self.config_name += ".json"
 
-        self.valid = False
-        self.configuration = {'name':'<none>'}
-        configfilename = path + basefoldername + '/' + self.config_name
-        if os.path.exists(configfilename):
-            with open(configfilename, 'r') as configfile:
-                self.configuration = json.load(configfile)
-                self.valid = True
+            self.valid = False
+            self.configuration = {'name':'<none>'}
+            configfilename = path + basefoldername + '/' + self.config_name
+            if os.path.exists(configfilename):
+                with open(configfilename, 'r') as configfile:
+                    self.configuration = json.load(configfile)
+                    self.valid = True
+        else:
+            """ For unit testing.
+            """
+            self.configuration = configuration
+            self.valid = True
 
+        self.Initialize()
+
+
+    def Initialize(self):
         self.name = None
         self.iteration_count = None
         self.layer_size = None

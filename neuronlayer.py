@@ -40,12 +40,12 @@ class LayerModule(tf.Module):
   including learning.
   """
 
-  def __init__(self, configuration: NeuronConfiguration, init_loader: InitLoader, name=None):
+  def __init__(self, configuration: NeuronConfiguration, initializer, name=None):
     super().__init__(name=name)
     self.is_built = False
 
     self.configuration = configuration
-    self.init_loader = init_loader
+    self.init_loader = initializer
 
     self.iterations = self.configuration.GetIterationCount()
     self.layer_size = self.configuration.GetLayerSize()
@@ -71,6 +71,7 @@ class LayerModule(tf.Module):
     self.connection_delays = tf.Variable(self.init_loader.InitializeConnectionDelays(), name='connection_delays', trainable=False)
     self.connection_timers = tf.Variable(tf.zeros((self.thickness, self.layer_size, self.layer_size), dtype=tf.int32), name='connection_timers', trainable=False)
     self.connection_post_timers = tf.Variable(tf.zeros((self.thickness, self.layer_size, self.layer_size), dtype=tf.int32), name='connection_post_timers', trainable=False)
+    self.activeconnections = tf.Variable(tf.zeros((self.thickness, self.layer_size, self.layer_size), dtype=tf.int32), name='activeconnections', trainable=False)
     self.post_time_delay = tf.constant(25)
 
     self.interconnects = tf.constant(self.init_loader.InitializeInterconnects(), name='interconnects')
@@ -94,18 +95,68 @@ class LayerModule(tf.Module):
     return interconnect_spikes
 
   def DelayConnect(self):
+    """
+    Delay each connection so that a presynaptic spike does not create a postsynaptic potential contribution
+    until after a delay of self.connection_delays[pop, pre, post]
+    NOTE: This must be called before a new value for self.spikes is computed.  self.spikes should therefore
+          represent the pre-synaptic spikes for this tick.
+    """
+    # Transpose the spikes tensor to become [thickness][layer_size][1] column matrices, which, when added to the 
+    # [thickness][layer_size][layer_size] empty matrix activehebbbase, broadcasts across each row, so that spiking
+    # presynaptic neurons provide ones across the whole row.  Cell-by-cell multiplcation of connection_delays
+    # changes the final activedelays matrix to contain the current connection delay for each synapse being driven
+    # by all currently spiking presynaptic neurons.
     activedelays = (self.activehebbbase + tf.transpose(self.spikes, perm=[0,2,1])) * self.connection_delays
+
+    # The delay for each activated connection is added to the current connection timer for that connection
+    # in the [thickness][layer_size][layer_size] connection_timers.
     self.connection_timers.assign_add(activedelays)
+
+    # The connection timers are going to be counted down and parked at zero.  Any connection timers currently passing
+    # through 1 are captured as a 1 in [thickness][layer_size][layer_size] triggeredtimers.
     triggeredtimers = tf.cast(tf.equal(self.connection_timers, 1), tf.int32)
-    activeconnections = triggeredtimers * self.connections
-    self.potentials.assign((self.dummyspikes @ activeconnections) + self.decayedpotentials)
+
+    # [thickness][layer_size][layer_size] triggeredtimers is used to filter from all connections to only the 
+    # set of connection strengths for connections currently triggered by their connection timer passing through
+    # 1 as it is decremented.
+    self.activeconnections = triggeredtimers * self.connections
+
+    # Matmul the all-ones [thickness][1][layer_size] dummyspikes tensor with the [thickness][layer_size][layer_size]
+    # activeconnections.  The operation adds all triggered connections for each postsynaptic neuron, which are
+    # accumulated into the current potentials less a little decay.
+    activepotentials = self.dummyspikes @ self.activeconnections
+    self.potentials.assign(activepotentials + self.decayedpotentials)
+
+    # Decrement the connection timers to zero.
     self.connection_timers.assign(tf.maximum(self.connection_timers - 1, 0))
 
-    activeconnectionmask = tf.cast(tf.greater(activeconnections, 0), tf.int32)
+
+  def UpdateConnectionDelays(self):
+    # Turn the active connections (delay timed out this tick) into a mask -> 1 if nonzero, 0 otherwise.
+    activeconnectionmask = tf.cast(tf.greater(self.activeconnections, 0), tf.int32)
+
+    # We keep track of how long it has been since a delay timer timed out for each connection.
     self.connection_post_timers.assign_add(activeconnectionmask * self.post_time_delay)
     self.connection_post_timers.assign(tf.maximum(self.connection_post_timers - 1, 0))
 
+    """
+    active_postsynaptic = tf.cast(tf.greater(activepotentials, 0), tf.int32)
+    delay_correction = (self.activehebbbase + self.post_time_delay) * activeconnectionmask
+    self.connection_delays.assign_add(delay_correction - ((self.activehebbbase + active_postsynaptic) * self.connection_post_timers))
+    """
+    post_timers_mask = tf.cast(tf.greater(self.connection_post_timers, 0), tf.int32)
+    delay_correction = (self.activehebbbase + self.post_time_delay) * activeconnectionmask
+    self.connection_delays.assign_add(((self.activehebbbase + self.spikes) * post_timers_mask * (self.post_time_delay - self.connection_post_timers)))
+    #print('(((self.activehebbbase + self.spikes) * post_timers_mask * (self.post_time_delay - self.connection_post_timers)))[0]')
+    #print((((self.activehebbbase + self.spikes) * post_timers_mask * (self.post_time_delay - self.connection_post_timers)))[0])
+    print('self.connection_delays[0]')
+    print(self.connection_delays[0])
+
+
   def HebbLearningConnect(self):
+    """
+    Do Hebbian learning, but also create new connections if the presynaptic timing is right.
+    """
     # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
     activehebb = (self.activehebbbase + tf.minimum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning)) * self.spikes
 
@@ -118,6 +169,9 @@ class LayerModule(tf.Module):
     self.hebbtimers.assign(tf.cast(tf.maximum(tf.subtract(self.hebbtimers, 1), 0), tf.int32))
 
   def HebbLearning(self):
+    """
+    The default Hebbian learning.
+    """
     # Broadcast hebbtimers across all rows of a workspace, then filter out columns that are not spiking this tick.
     activehebb = (self.activehebbbase + tf.minimum(tf.transpose(self.hebbtimers, perm=[0,2,1]), self.hebblearning)) * self.spikes
 
@@ -163,6 +217,9 @@ class LayerModule(tf.Module):
     # Spike if above threshold, but only if delaytime is exhausted.  This generates the post-synaptic spike pattern.
     self.spikes.assign(tf.cast(tf.greater_equal(tf.multiply(self.potentials, self.delayguards), self.threshold), tf.int32))
 
+    # Use post-synaptic spikes to update the connection delays for next tick's DelayConnect()
+    self.UpdateConnectionDelays()
+
     # Inject any spikes included in the incoming spike train plus interconnects.
     self.spikes.assign(tf.cast(tf.minimum(self.spikes + self.spiketrain[self.tick] + self.Interconnect(), 1), tf.int32))
     self.tick.assign_add(1)
@@ -197,18 +254,17 @@ class PopulationModule(tf.Module):
   number of times, as indicated by the configuration.
   """
 
-  def __init__(self, configuration: NeuronConfiguration, init_loader: InitLoader, name=None):
+  def __init__(self, configuration: NeuronConfiguration, initializer, name=None):
     super().__init__(name=name)
 
     self.configuration = configuration
-    self.init_loader = init_loader
     self.layer_size = self.configuration.GetLayerSize()
     iterations = self.configuration.GetIterationCount()
     self.iterations = tf.constant(iterations)
     thickness = self.configuration.GetThickness()
     self.thickness = tf.constant(thickness)
 
-    self.population = LayerModule(configuration=self.configuration, init_loader=self.init_loader, name="population")
+    self.population = LayerModule(configuration=self.configuration, initializer=initializer, name="population")
 
     # This Tensorflow variable may not be necessary, but seems to be required to ensure that calls to self.population
     # are included in the compute graph.  TBD
