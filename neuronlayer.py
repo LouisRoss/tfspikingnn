@@ -132,6 +132,13 @@ class LayerModule(tf.Module):
 
 
   def UpdateConnectionDelays(self):
+    """
+    For each postsynaptic spike, update all connection delays from presynaptic neurons that have
+    spiked within self.post_time_delay ticks in the past.  Bring the delay up so that past presynaptic
+    spikes will contribute more to the current postsynaptic potential.
+    NOTE: This must be called after a new value for self.spikes is computed.  self.spikes should therefore
+          represent the post-synaptic spikes for this tick.
+    """
     # Turn the active connections (delay timed out this tick) into a mask -> 1 if nonzero, 0 otherwise.
     activeconnectionmask = tf.cast(tf.greater(self.activeconnections, 0), tf.int32)
 
@@ -139,18 +146,10 @@ class LayerModule(tf.Module):
     self.connection_post_timers.assign_add(activeconnectionmask * self.post_time_delay)
     self.connection_post_timers.assign(tf.maximum(self.connection_post_timers - 1, 0))
 
-    """
-    active_postsynaptic = tf.cast(tf.greater(activepotentials, 0), tf.int32)
-    delay_correction = (self.activehebbbase + self.post_time_delay) * activeconnectionmask
-    self.connection_delays.assign_add(delay_correction - ((self.activehebbbase + active_postsynaptic) * self.connection_post_timers))
-    """
     post_timers_mask = tf.cast(tf.greater(self.connection_post_timers, 0), tf.int32)
-    delay_correction = (self.activehebbbase + self.post_time_delay) * activeconnectionmask
-    self.connection_delays.assign_add(((self.activehebbbase + self.spikes) * post_timers_mask * (self.post_time_delay - self.connection_post_timers)))
-    #print('(((self.activehebbbase + self.spikes) * post_timers_mask * (self.post_time_delay - self.connection_post_timers)))[0]')
-    #print((((self.activehebbbase + self.spikes) * post_timers_mask * (self.post_time_delay - self.connection_post_timers)))[0])
-    print('self.connection_delays[0]')
-    print(self.connection_delays[0])
+    self.connection_delays.assign_add(((self.activehebbbase + self.spikes) * post_timers_mask * ((self.post_time_delay-1) - self.connection_post_timers)))
+    #print('((self.activehebbbase + self.spikes) * post_timers_mask * ((self.post_time_delay-1) - self.connection_post_timers))[0]')
+    #print(((self.activehebbbase + self.spikes) * post_timers_mask * ((self.post_time_delay-1) - self.connection_post_timers))[0])
 
 
   def HebbLearningConnect(self):

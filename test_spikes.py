@@ -77,15 +77,33 @@ class Initializer(BaseInitializer):
         epoch_tick = tick
         # Spike each input cell in sequence
         for ycell in range(1, self.yedgesize-1):
-            spike_cell = ycell*self.xedgesize + 0
-            initialspikes[epoch_tick, population, 0, spike_cell] = 1
-
             spike_cell = ycell*self.xedgesize
             to_cell = ycell*self.xedgesize + self.yedgesize - 1
+
             initialspikes[epoch_tick, population, 0, spike_cell] = 1
             initialspikes[epoch_tick+1, population, 0, spike_cell+1] = 1
             initialspikes[epoch_tick+2, population, 0, spike_cell+2] = 1
             initialspikes[epoch_tick+3, population, 0, to_cell] = 1
+
+            epoch_tick += 1
+
+
+    return initialspikes
+  
+  def GenerateSpikesEpoch1(self, duration):
+    initialspikes = super().GenerateSpikes(duration)
+
+    for tick in range(0, duration, 40):
+      for population in range(self.thickness):
+        epoch_tick = tick
+        # Spike each input cell in sequence
+        for ycell in range(1, self.yedgesize-1):
+            spike_cell = ycell*self.xedgesize
+
+            initialspikes[epoch_tick, population, 0, spike_cell] = 1
+            initialspikes[epoch_tick+1, population, 0, spike_cell+1] = 1
+            initialspikes[epoch_tick+2, population, 0, spike_cell+2] = 1
+
             epoch_tick += 1
 
 
@@ -107,6 +125,27 @@ class Initializer(BaseInitializer):
        [[0, 0, 0, 0,  0, 0, 0, 7,  0, 0, 0, 5,  0, 0, 0, 0]],
        [[0, 0, 0, 0,  0, 0, 0, 12, 0, 0, 0, 7,  0, 0, 0, 0]],
        [[0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 12, 0, 0, 0, 0]],
+       [[0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0]]
+    ]
+
+    return (expected_spikes, expected_potentials)
+     
+  def CheatSheetEpoch1(self):
+    expected_spikes = [
+       [[0, 0, 0, 0,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0]],
+       [[0, 0, 0, 0,  0, 1, 0, 0,  1, 0, 0, 0,  0, 0, 0, 0]],
+       [[0, 0, 0, 0,  0, 0, 1, 0,  0, 1, 0, 0,  0, 0, 0, 0]],
+       [[0, 0, 0, 0,  0, 0, 0, 1,  0, 0, 1, 0,  0, 0, 0, 0]],
+       [[0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 1,  0, 0, 0, 0]],
+       [[0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0]]
+    ]
+
+    expected_potentials = [
+       [[0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0]],
+       [[0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0]],
+       [[0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0]],
+       [[0, 0, 0, 0,  0, 0, 0, 25, 0, 0, 0, 0,  0, 0, 0, 0]],
+       [[0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 25, 0, 0, 0, 0]],
        [[0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0]]
     ]
 
@@ -174,10 +213,47 @@ class TestSpikingModel(unittest.TestCase):
           #print(self.layer.spikes[population,0])
           #print(self.layer.potentials[population])
 
+        print('spikes, connection_delays')
         print(self.layer.spikes[0,0])
         print(self.layer.connection_delays[0,4])
+        print(self.layer.connection_delays[0,8])
 
       print(self.layer.connection_delays[0])
+
+      for i in range(30):
+        self.layer.tick.assign(self.configuration.iteration_count - 1)
+        self.layer('')
+
+      (expected_spikes, expected_potentials) = self.initializer.CheatSheetEpoch1()
+      self.assertEqual(len(expected_spikes), len(expected_potentials))
+
+      print(self.layer.connection_delays[0])
+      self.layer.spiketrain.assign(self.initializer.GenerateSpikesEpoch1(self.configuration.iteration_count))
+      self.layer.tick.assign(0)
+      for i in range(len(expected_spikes)):
+        expected_spike = expected_spikes[i]
+        expected_potential = expected_potentials[i]
+
+        # Execute a tick for every expected element in the cheatsheet.
+        self.layer('')
+
+        # All populations connected identically and spike identically.
+        for population in range(self.initializer.thickness):
+          self.assertTrue(TensorEqual(expected_spike, self.layer.spikes[population]))
+          self.assertTrue(TensorEqual(expected_potential, self.layer.potentials[population]))
+          #print(self.layer.spikes[population,0])
+          #print(self.layer.potentials[population])
+
+        print('spikes, potentials, connection_delays')
+        print(self.layer.spikes[0,0])
+        print(self.layer.potentials[0])
+        print(self.layer.connection_delays[0,4])
+        print(self.layer.connection_delays[0,8])
+
+      print('connection_delays, connections')
+      print(self.layer.connection_delays[0])
+      print(self.layer.connections[0])
+
 
     def test_delay_adjustment(self):
       (expected_spikes, _) = self.initializer.CheatSheet()
