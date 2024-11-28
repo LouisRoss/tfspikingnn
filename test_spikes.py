@@ -177,9 +177,11 @@ class TestSpikingModel(unittest.TestCase):
       self.assertTrue(self.configuration.valid)
 
     def test_correctinitializer(self):
+      print('***test_correctinitializer***')
       self.assertEqual(0, self.layer.configuration.GetSelectedInitializer())
 
     def test_correctdimensions(self):
+      print('***test_correctdimensions***')
       self.assertEqual(self.configuration.configuration['iterationCount'],    self.layer.iterations)
       self.assertEqual(self.configuration.configuration['layerSize'],         self.layer.layer_size)
       self.assertEqual(self.configuration.configuration['thickness'],         self.layer.thickness)
@@ -189,16 +191,18 @@ class TestSpikingModel(unittest.TestCase):
       #print(self.layer.connections[0])
 
     def test_singlestep(self):
+      print('***test_singlestep***')
       # Execute a single tick.
       self.layer('')
       self.assertTrue(TensorEqual(self.initializer.InitializeConnectionDelays(), self.layer.connection_delays))
       self.assertTrue(TensorEqual(self.initializer.InitializeConnections(), self.layer.connections))
 
     def test_spikes_and_potentials(self):
+      print('***test_spikes_and_potentials***')
       (expected_spikes, expected_potentials) = self.initializer.CheatSheet()
       self.assertEqual(len(expected_spikes), len(expected_potentials))
  
-      print(self.layer.connection_delays[0])
+      #print(self.layer.connection_delays[0])
       for i in range(len(expected_spikes)):
         expected_spike = expected_spikes[i]
         expected_potential = expected_potentials[i]
@@ -218,7 +222,7 @@ class TestSpikingModel(unittest.TestCase):
         print(self.layer.connection_delays[0,4])
         print(self.layer.connection_delays[0,8])
 
-      print(self.layer.connection_delays[0])
+      #print(self.layer.connection_delays[0])
 
       for i in range(30):
         self.layer.tick.assign(self.configuration.iteration_count - 1)
@@ -227,7 +231,7 @@ class TestSpikingModel(unittest.TestCase):
       (expected_spikes, expected_potentials) = self.initializer.CheatSheetEpoch1()
       self.assertEqual(len(expected_spikes), len(expected_potentials))
 
-      print(self.layer.connection_delays[0])
+      #print(self.layer.connection_delays[0])
       self.layer.spiketrain.assign(self.initializer.GenerateSpikesEpoch1(self.configuration.iteration_count))
       self.layer.tick.assign(0)
       for i in range(len(expected_spikes)):
@@ -244,18 +248,18 @@ class TestSpikingModel(unittest.TestCase):
           #print(self.layer.spikes[population,0])
           #print(self.layer.potentials[population])
 
-        print('spikes, potentials, connection_delays')
+        print('spikes, connection_delays')
         print(self.layer.spikes[0,0])
-        print(self.layer.potentials[0])
         print(self.layer.connection_delays[0,4])
         print(self.layer.connection_delays[0,8])
 
-      print('connection_delays, connections')
-      print(self.layer.connection_delays[0])
-      print(self.layer.connections[0])
+      #print('connection_delays, connections')
+      #print(self.layer.connection_delays[0])
+      #print(self.layer.connections[0])
 
 
     def test_delay_adjustment(self):
+      print('***test_delay_adjustment***')
       (expected_spikes, _) = self.initializer.CheatSheet()
 
       original_delay_times = self.layer.connection_delays

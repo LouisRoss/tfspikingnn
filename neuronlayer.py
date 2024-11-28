@@ -151,6 +151,18 @@ class LayerModule(tf.Module):
     #print('((self.activehebbbase + self.spikes) * post_timers_mask * ((self.post_time_delay-1) - self.connection_post_timers))[0]')
     #print(((self.activehebbbase + self.spikes) * post_timers_mask * ((self.post_time_delay-1) - self.connection_post_timers))[0])
 
+  def UpdateDelays(self):
+    # Postsynaptic spikes cannot repeat any faster than this number of ticks.
+    self.delaytimes.assign_add(tf.multiply(self.spikes, 8))
+
+    # delayguards can be used to filter out cells with delaytime > 0.  Delayguard is 1 if delaytime <= 0.
+    self.delayguards.assign(tf.cast(tf.less_equal(self.delaytimes, 0), tf.int32))
+
+    # decaypotential(i) = potential(i) / 2, or 0 if delaytime is delaying.
+    self.decayedpotentials.assign(tf.cast(tf.divide(tf.multiply(self.potentials, self.delayguards), self.factor), dtype=tf.dtypes.int32))
+
+    self.delaytimes.assign(tf.cast(tf.maximum(tf.subtract(self.delaytimes, 1), 0), tf.int32))
+
 
   def HebbLearningConnect(self):
     """
@@ -223,16 +235,7 @@ class LayerModule(tf.Module):
     self.spikes.assign(tf.cast(tf.minimum(self.spikes + self.spiketrain[self.tick] + self.Interconnect(), 1), tf.int32))
     self.tick.assign_add(1)
 
-    # delaytime(i) = delaytime(i) + 8 if spike(i) else delaytime(i)
-    self.delaytimes.assign_add(tf.multiply(self.spikes, 8))
-
-    # delayguards can be used to filter out cells with delaytime > 0.  Delayguard is 1 if delaytime <= 0.
-    self.delayguards.assign(tf.cast(tf.less_equal(self.delaytimes, 0), tf.int32))
-
-    # decaypotential(i) = potential(i) / 2, or 0 if delaytime is delaying.
-    self.decayedpotentials.assign(tf.cast(tf.divide(tf.multiply(self.potentials, self.delayguards), self.factor), dtype=tf.dtypes.int32))
-
-    self.delaytimes.assign(tf.cast(tf.maximum(tf.subtract(self.delaytimes, 1), 0), tf.int32))
+    self.UpdateDelays()
 
     if log:
       #tf.print(self.connections, summarize=-1, sep=',', output_stream= 'file://' + datafolder + 'fullconnections.dat')
